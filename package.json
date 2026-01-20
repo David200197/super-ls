@@ -1,0 +1,27 @@
+{
+    "name": "super-ls",
+    "version": "1.0.0",
+    "description": "A supercharged storage adapter for Titan Planet that enables storing complex objects, circular references, and Class instances with automatic rehydration.",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [
+        "titan planet",
+        "extension"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "devalue": "^5.6.2"
+    },
+    "peerDependencies": {
+        "@titanpl/core": ">=1.0.0"
+    },
+    "devDependencies": {
+        "@titanpl/core": "latest",
+        "titanpl-sdk": "latest",
+        "esbuild": "^0.27.2"
+    }
+}

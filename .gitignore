@@ -1,0 +1,6 @@
+
+# mkctx - generated context
+mkctx/
+node_modules
+coverage
+package-lock.json
