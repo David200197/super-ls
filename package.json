@@ -6,6 +6,7 @@
     "type": "module",
     "scripts": {
         "build": "esbuild index.js --bundle --platform=neutral --format=iife --outfile=dist/index.js --global-name=TitanPlSuperLs",
+        "test:ext": "titan run ext",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:cov": "vitest --coverage"
