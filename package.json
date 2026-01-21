@@ -1,6 +1,6 @@
 {
     "name": "titanpl-superls",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "A supercharged storage adapter for Titan Planet that enables storing complex objects, circular references, and Class instances with automatic rehydration.",
     "main": "index.js",
     "type": "module",
