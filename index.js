@@ -85,7 +85,7 @@ const hasTypeWrapper = (value) => value[TYPE_MARKER] && value[DATA_MARKER] !== u
  * superLs.set('user_settings', settings);
  * 
  * const recovered = superLs.get('user_settings');
- * console.log(recovered.get('theme')); // 'dark'
+ * t.log(recovered.get('theme')); // 'dark'
  * 
  * @example
  * // Usage with custom classes
@@ -214,12 +214,12 @@ export class SuperLocalStorage {
      * @example
      * const settings = superLs.get('user_settings');
      * if (settings) {
-     *     console.log(settings.get('theme')); // Map methods work
+     *     t.log(settings.get('theme')); // Map methods work
      * }
      */
     get(key) {
         const raw = t.ls.get(this.prefix + key);
-        
+
         if (!raw) {
             return null;
         }
@@ -301,9 +301,9 @@ export class SuperLocalStorage {
      * @private
      */
     _isNativelySerializable(value) {
-        return value instanceof Date || 
-               value instanceof RegExp || 
-               isTypedArray(value);
+        return value instanceof Date ||
+            value instanceof RegExp ||
+            isTypedArray(value);
     }
 
     /**
@@ -611,5 +611,14 @@ export class SuperLocalStorage {
  * @type {SuperLocalStorage}
  */
 const superLs = new SuperLocalStorage();
+
+// Titan Planet Extension Registration
+if (typeof t !== 'undefined') {
+    try {
+        t["titanpl-superls"] = superLs;
+    } catch (e) {
+        t.log("[titanpl-superls] Failed to register extension:", e);
+    }
+}
 
 export default superLs;
