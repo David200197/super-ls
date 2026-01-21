@@ -22,7 +22,7 @@
 Add `super-ls` to your Titan Planet project:
 
 ```bash
-npm install @david200197/super-ls
+npm install titanpl-superls
 ```
 
 ---
@@ -34,7 +34,7 @@ npm install @david200197/super-ls
 Store objects that standard JSON cannot handle:
 
 ```javascript
-import superLs from "@titanpl/super-ls";
+import superLs from "titanpl-superls";
 
 // Maps
 const settings = new Map([
@@ -75,7 +75,7 @@ The true power of `super-ls` lies in its ability to restore class instances with
 #### 1. Define and Register Your Class
 
 ```javascript
-import superLs from "@titanpl/super-ls";
+import superLs from "titanpl-superls";
 
 class Player {
     constructor(name = "", score = 0) {
@@ -203,7 +203,7 @@ superLs.register(CustomerUser, "CustomerUser");
 For isolated registries or different prefixes:
 
 ```javascript
-import { SuperLocalStorage } from "@titanpl/super-ls";
+import { SuperLocalStorage } from "titanpl-superls";
 
 const gameStorage = new SuperLocalStorage("game_");
 const userStorage = new SuperLocalStorage("user_");
@@ -274,7 +274,7 @@ Creates a new storage instance with isolated registry.
 | `prefix` | `string` | `"sls_"` | Key prefix for all operations |
 
 ```javascript
-import { SuperLocalStorage } from "@titanpl/super-ls";
+import { SuperLocalStorage } from "titanpl-superls";
 const custom = new SuperLocalStorage("myapp_");
 ```
 
