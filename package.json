@@ -5,7 +5,9 @@
     "main": "index.js",
     "type": "module",
     "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:cov": "vitest --coverage"
     },
     "keywords": [
         "titan planet",
@@ -21,7 +23,9 @@
     },
     "devDependencies": {
         "@titanpl/core": "latest",
+        "@vitest/coverage-v8": "^4.0.17",
+        "esbuild": "^0.27.2",
         "titanpl-sdk": "latest",
-        "esbuild": "^0.27.2"
+        "vitest": "^4.0.17"
     }
 }
