@@ -44,8 +44,8 @@ const settings = new Map([
 superLs.set("user_settings", settings);
 
 const recovered = superLs.get("user_settings");
-console.log(recovered instanceof Map); // true
-console.log(recovered.get("theme"));   // "dark"
+t.log(recovered instanceof Map); // true
+t.log(recovered.get("theme"));   // "dark"
 
 // Sets
 superLs.set("tags", new Set(["javascript", "typescript", "nodejs"]));
@@ -65,7 +65,7 @@ obj.self = obj;
 superLs.set("circular", obj);
 
 const restored = superLs.get("circular");
-console.log(restored.self === restored); // true
+t.log(restored.self === restored); // true
 ```
 
 ### Class Hydration
@@ -105,12 +105,12 @@ superLs.set("player_1", player);
 // Later, in a different request...
 const restored = superLs.get("player_1");
 
-console.log(restored.name);              // "Alice"
-console.log(restored.greet());           // "Hello, I am Alice!"
-console.log(restored instanceof Player); // true
+t.log(restored.name);              // "Alice"
+t.log(restored.greet());           // "Hello, I am Alice!"
+t.log(restored instanceof Player); // true
 
 restored.addScore(50);                   // Methods work!
-console.log(restored.score);             // 150
+t.log(restored.score);             // 150
 ```
 
 ### Dependency Injection Pattern
@@ -153,9 +153,9 @@ superLs.set("hero", arthur);
 
 // Restore with full dependency graph
 const restored = superLs.get("hero");
-console.log(restored instanceof Warrior);        // true
-console.log(restored.weapon instanceof Weapon);  // true
-console.log(restored.fight());                   // "Arthur: Excalibur deals 50 damage!"
+t.log(restored instanceof Warrior);        // true
+t.log(restored.weapon instanceof Weapon);  // true
+t.log(restored.fight());                   // "Arthur: Excalibur deals 50 damage!"
 ```
 
 ### Custom Hydration (Complex Constructors)
@@ -247,7 +247,7 @@ Retrieves and deserializes a value with full type restoration.
 ```javascript
 const config = superLs.get("config");
 if (config) {
-    console.log(config.items instanceof Set); // true
+    t.log(config.items instanceof Set); // true
 }
 ```
 
