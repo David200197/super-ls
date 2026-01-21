@@ -22,7 +22,7 @@
 Add `super-ls` to your Titan Planet project:
 
 ```bash
-npm install super-ls
+npm install @david200197/super-ls
 ```
 
 ---
