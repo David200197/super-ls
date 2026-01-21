@@ -15,9 +15,29 @@ dist/
 build/
 
 # Titan Planet
-.titan/
-.titan_test_run/
+# .titan_test_run/
 *.bk
+
+
+# Titan Runtime (Auto-generated - DO NOT COMMIT)
+titan/server-bin*
+.titan_test_run/.titan/
+.titan_test_run/.ext/
+.titan_test_run/server/routes.json
+.titan_test_run/server/action_map.json
+.titan_test_run/server/actions/
+.titan_test_run/server/titan/
+.titan_test_run/server/src/actions_rust/
+
+# Rust Build Artifacts
+.titan_test_run/server/target/
+.titan_test_run/server/Cargo.lock
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
 
 # Misc
 .DS_Store
