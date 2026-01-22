@@ -3,7 +3,7 @@
  * This represents the serialized "data shape" of a class instance.
  */
 type PropertiesOnly<T> = {
-    [K in keyof T as T[K] extends Function ? never : K]: T[K]
+    [K in keyof T as T[K] extends (...args: any[]) => any ? never : K]: T[K]
 };
 
 /**
