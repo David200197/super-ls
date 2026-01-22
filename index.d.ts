@@ -9,8 +9,9 @@ type PropertiesOnly<T> = {
 /**
  * Function that creates a class instance from serialized data.
  * @template T - The type of the class instance
+ * @template H - The type of the hydrate data argument
  */
-export type HydrateFunction<T> = (data: PropertiesOnly<T>) => T;
+export type HydrateFunction<T, H = PropertiesOnly<T>> = (data: H) => T;
 
 /**
  * SuperLocalStorage - Enhanced localStorage wrapper for Titan Planet
@@ -71,7 +72,7 @@ export class SuperLocalStorage {
      * // Registration with hydrate function and custom type name
      * superLs.register(Player, (data) => new Player(data.name, data.score), 'GamePlayer');
      */
-    register<T>(ClassRef: new (...args: any[]) => T, hydrate: HydrateFunction<T>, typeName?: string): void;
+    register<T, H = PropertiesOnly<T>>(ClassRef: new (...args: any[]) => T, hydrate: HydrateFunction<T, H>, typeName?: string): void;
 
     /**
      * Registers a class for serialization/deserialization support.

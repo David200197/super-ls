@@ -506,7 +506,17 @@ superLs.register<Player>(Player, (data) => new Player(data.name, data.score));
 
 ### HydrateFunction Type
 
-The `HydrateFunction<T>` type automatically extracts only the non-function properties from your class:
+The `HydrateFunction<T, H>` type is defined as:
+
+```typescript
+type PropertiesOnly<T> = {
+    [K in keyof T as T[K] extends (...args: any[]) => any ? never : K]: T[K]
+};
+
+type HydrateFunction<T, H = PropertiesOnly<T>> = (data: H) => T;
+```
+
+By default, it automatically extracts only the non-function properties from your class:
 
 ```typescript
 class Player {
@@ -526,6 +536,21 @@ class Player {
 // TypeScript infers: data is { name: string; score: number }
 // Methods like greet() are automatically excluded
 superLs.register(Player, (data) => new Player(data.name, data.score));
+```
+
+### Custom Data Type
+
+The second generic parameter `H` allows you to specify a custom data type:
+
+```typescript
+// Define exactly what properties exist in serialized data
+interface PlayerData {
+    name: string;
+    score: number;
+}
+
+// Use explicit type for the hydrate data
+superLs.register<Player, PlayerData>(Player, (data) => new Player(data.name, data.score));
 ```
 
 ### ⚠️ Getter Limitation
@@ -571,21 +596,21 @@ superLs.register(Player, (data) => {
    });
    ```
 
-2. **Define an explicit data interface** for complex classes:
+2. **Define an explicit data type** using the second generic parameter:
    ```typescript
    interface PlayerData {
        name: string;
        score: number;
    }
    
-   superLs.register(Player, (data: PlayerData) => new Player(data.name, data.score));
+   superLs.register<Player, PlayerData>(Player, (data) => new Player(data.name, data.score));
    ```
 
-3. **Use a type assertion** to exclude getters manually:
+3. **Use `Omit` to exclude getters** manually:
    ```typescript
    type PlayerSerializable = Omit<PropertiesOnly<Player>, 'fullName' | 'displayScore'>;
    
-   superLs.register(Player, (data: PlayerSerializable) => new Player(data.name, data.score));
+   superLs.register<Player, PlayerSerializable>(Player, (data) => new Player(data.name, data.score));
    ```
 
 > **Note**: This is a TypeScript limitation, not a `super-ls` limitation. At runtime, `super-ls` correctly serializes only actual properties and ignores getters.
@@ -602,7 +627,7 @@ superLs.register(Player, (data) => {
 | **Sparse arrays** | Holes become `undefined` | Use dense arrays or objects |
 | **Unregistered classes** | Become plain objects (methods lost) | Register all classes |
 | **Getters/Setters** | Not serialized (computed at runtime) | Use hydrate function to recompute |
-| **TypeScript getters** | Appear in `HydrateFunction<T>` data type but are `undefined` at runtime | Ignore them in hydrate or define explicit data interface (see [TypeScript Usage](#-typescript-usage)) |
+| **TypeScript getters** | Appear in `HydrateFunction<T>` data type but are `undefined` at runtime | Ignore them in hydrate or use explicit data type with second generic `H` (see [TypeScript Usage](#-typescript-usage)) |
 
 ---
 

@@ -749,12 +749,57 @@ SuperLocalStorage includes full TypeScript support:
 ```typescript
 // PropertiesOnly<T> extracts non-function properties from a class
 type PropertiesOnly<T> = {
-    [K in keyof T as T[K] extends Function ? never : K]: T[K]
+    [K in keyof T as T[K] extends (...args: any[]) => any ? never : K]: T[K]
 };
 
-// HydrateFunction receives only the serializable properties
-type HydrateFunction<T> = (data: PropertiesOnly<T>) => T;
+// HydrateFunction<T, H> receives data of type H (defaults to PropertiesOnly<T>)
+// and returns an instance of type T
+type HydrateFunction<T, H = PropertiesOnly<T>> = (data: H) => T;
 ```
+
+### Using the Default Type
+
+By default, `HydrateFunction<T>` automatically extracts non-function properties:
+
+```typescript
+class Player {
+    name: string;
+    score: number;
+    
+    constructor(name: string, score: number) {
+        this.name = name;
+        this.score = score;
+    }
+    
+    greet(): string {
+        return `Hello, I am ${this.name}!`;
+    }
+}
+
+// TypeScript infers data as { name: string; score: number }
+// Methods like greet() are automatically excluded
+superLs.register(Player, (data) => new Player(data.name, data.score));
+```
+
+### Custom Data Type with Second Generic Parameter
+
+The second generic parameter `H` allows you to specify a custom data type when the default inference isn't sufficient:
+
+```typescript
+// Define exactly what properties exist in serialized data
+interface PlayerData {
+    name: string;
+    score: number;
+}
+
+// Use explicit type for the hydrate data
+superLs.register<Player, PlayerData>(Player, (data) => new Player(data.name, data.score));
+```
+
+This is particularly useful when:
+- Your class has getters that shouldn't appear in the data type
+- You want to be explicit about the serialization contract
+- You're working with third-party classes
 
 ### The Getter Problem in TypeScript
 
@@ -796,7 +841,7 @@ superLs.register(Player, (data) => {
 
 ### Workarounds
 
-**Option 1: Ignore getter properties (recommended)**
+**Option 1: Ignore getter properties (recommended for simple cases)**
 
 Simply don't access getter properties in your hydrate function:
 
@@ -807,7 +852,7 @@ superLs.register(Player, (data) => {
 });
 ```
 
-**Option 2: Define explicit data interface**
+**Option 2: Define explicit data type with second generic parameter (recommended for complex classes)**
 
 ```typescript
 interface PlayerData {
@@ -816,7 +861,8 @@ interface PlayerData {
     id: string;
 }
 
-superLs.register(Player, (data: PlayerData) => {
+// Use the second generic parameter to specify the exact data shape
+superLs.register<Player, PlayerData>(Player, (data) => {
     return new Player(data.name, data.score);
 });
 ```
@@ -826,7 +872,7 @@ superLs.register(Player, (data: PlayerData) => {
 ```typescript
 type PlayerSerializable = Omit<PropertiesOnly<Player>, 'fullName' | 'displayScore'>;
 
-superLs.register(Player, (data: PlayerSerializable) => {
+superLs.register<Player, PlayerSerializable>(Player, (data) => {
     return new Player(data.name, data.score);
 });
 ```
@@ -860,7 +906,7 @@ There's no type-level metadata that indicates "this is a getter" vs "this is a r
 | Method (`x() {}`) | ❌ Not serialized | ❌ Excluded by `PropertiesOnly` |
 | `readonly` property | ✅ Serialized | ✅ In type |
 
-**Key insight**: At runtime, `super-ls` behaves correctly. The TypeScript type is simply more permissive than reality for getters.
+**Key insight**: At runtime, `super-ls` behaves correctly. The TypeScript type is simply more permissive than reality for getters. Use the second generic parameter `H` to provide an exact type when needed.
 
 ---
 
@@ -944,6 +990,18 @@ The hydrate function approach (introduced as the primary method) is preferred ov
 
 The static `hydrate()` method is maintained for backward compatibility.
 
+### 8. Why Two Generic Parameters in HydrateFunction?
+
+```typescript
+type HydrateFunction<T, H = PropertiesOnly<T>> = (data: H) => T;
+```
+
+**Reasons**:
+- **Flexibility**: Users can specify exact data shape when needed
+- **TypeScript getter limitation**: Allows excluding getters from the type
+- **Backward compatibility**: Default parameter means existing code works unchanged
+- **Explicit contracts**: Complex classes can define exact serialization shape
+
 ---
 
 ## Performance Considerations
@@ -982,5 +1040,6 @@ SuperLocalStorage provides a transparent serialization layer that:
 5. **Restores** class prototypes for method and getter access
 6. **Supports** flexible hydration via functions or static methods
 7. **Excludes** getters automatically (they're computed, not stored)
+8. **Provides** TypeScript support with customizable data types via `HydrateFunction<T, H>`
 
 The design prioritizes correctness over performance, with special attention to edge cases like circular references, inheritance, complex constructor requirements, and the distinction between stored properties and computed getters.
