@@ -10,6 +10,7 @@
 
 - **Rich Data Types**: Store `Map`, `Set`, `Date`, `RegExp`, `BigInt`, `TypedArray`, `undefined`, `NaN`, `Infinity`, and circular references
 - **Class Hydration**: Register your custom classes and retrieve fully functional instances with methods intact
+- **Flexible Hydration**: Pass a hydrate function directly to `register()` for complete control over instance reconstruction
 - **Dependency Injection Support**: Serialize/deserialize nested class instances and complex object graphs
 - **Circular Reference Handling**: Automatic detection and preservation of circular references
 - **Lazy Initialization**: Use `resolve()` for "get or create" patterns
@@ -187,7 +188,7 @@ t.log(restored.fight());                   // "Arthur: Excalibur deals 50 damage
 
 ### Custom Hydration (Complex Constructors)
 
-For classes with required constructor arguments or complex initialization:
+For classes with required constructor arguments or complex initialization, pass a hydrate function as the second argument to `register()`:
 ```javascript
 class ImmutableUser {
     constructor(id, email) {
@@ -196,19 +197,15 @@ class ImmutableUser {
         this.email = email;
         Object.freeze(this);
     }
-
-    // Static hydrate method for custom reconstruction
-    static hydrate(data) {
-        return new ImmutableUser(data.id, data.email);
-    }
 }
 
-superLs.register(ImmutableUser);
+// Pass hydrate function as second argument
+superLs.register(ImmutableUser, (data) => new ImmutableUser(data.id, data.email));
 
 const user = new ImmutableUser(1, "alice@example.com");
 superLs.set("user", user);
 
-const restored = superLs.get("user"); // Works! Uses hydrate() internally
+const restored = superLs.get("user"); // Works! Uses hydrate function internally
 ```
 
 ### Custom Type Names
@@ -219,8 +216,13 @@ Useful for minified code or avoiding name collisions:
 import { User as AdminUser } from "./admin";
 import { User as CustomerUser } from "./customer";
 
+// Without hydrate function - just type name
 superLs.register(AdminUser, "AdminUser");
 superLs.register(CustomerUser, "CustomerUser");
+
+// With hydrate function and custom type name
+superLs.register(AdminUser, (data) => new AdminUser(data.id), "AdminUser");
+superLs.register(CustomerUser, (data) => new CustomerUser(data.id), "CustomerUser");
 ```
 
 ### Multiple Storage Instances
@@ -345,17 +347,29 @@ superLs.register(Player);
 const player = superLs.resolve("player", () => new Player("Guest", 0));
 ```
 
-### `superLs.register(ClassRef, typeName?)`
+### `superLs.register(ClassRef, hydrateOrTypeName?, typeName?)`
 
 Registers a class for automatic serialization/deserialization.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `ClassRef` | `Function` | Class constructor |
-| `typeName` | `string?` | Custom type name (defaults to `ClassRef.name`) |
+| `hydrateOrTypeName` | `function \| string?` | Hydrate function or custom type name |
+| `typeName` | `string?` | Custom type name (when hydrate function is provided) |
+
+**Overloads:**
 ```javascript
+// Basic registration (uses default constructor + Object.assign)
 superLs.register(Player);
-superLs.register(Enemy, "GameEnemy"); // Custom name
+
+// With hydrate function
+superLs.register(Player, (data) => new Player(data.name, data.score));
+
+// With hydrate function and custom type name
+superLs.register(Player, (data) => new Player(data.name, data.score), "GamePlayer");
+
+// With only custom type name (backward compatible)
+superLs.register(Player, "GamePlayer");
 ```
 
 ### `new SuperLocalStorage(prefix?)`
@@ -372,7 +386,7 @@ const custom = new SuperLocalStorage("myapp_");
 
 ---
 
-## 🎯 When to Use Static `hydrate()` Method
+## 🎯 When to Use the Hydrate Function
 
 By default, `super-ls` reconstructs class instances like this:
 ```javascript
@@ -407,7 +421,7 @@ class Player {
 
 ### The Solution
 
-Define a static `hydrate()` method that tells `super-ls` how to reconstruct your class:
+Pass a hydrate function as the second argument to `register()`:
 ```javascript
 class Player {
     constructor(name, score) {
@@ -415,17 +429,16 @@ class Player {
         this.name = name;
         this.score = score;
     }
-
-    static hydrate(data) {
-        return new Player(data.name, data.score);
-    }
 }
+
+// Hydrate function tells super-ls how to reconstruct the class
+superLs.register(Player, (data) => new Player(data.name, data.score));
 ```
 
 ### Quick Reference
 
-| Constructor Style | Needs `hydrate()`? | Example |
-|-------------------|-------------------|---------|
+| Constructor Style | Needs hydrate? | Example |
+|-------------------|----------------|---------|
 | All params have defaults | ❌ No | `constructor(name = '', score = 0)` |
 | No parameters | ❌ No | `constructor()` |
 | Required parameters | ✅ Yes | `constructor(name, score)` |
@@ -442,39 +455,34 @@ class Counter {
         this.value = value;
     }
 }
+superLs.register(Counter);
 
-// ❌ NEEDS hydrate - required params
+// ✅ NEEDS hydrate - required params
 class Email {
     constructor(value) {
         if (!value.includes('@')) throw new Error('Invalid');
         this.value = value;
     }
-    static hydrate(data) {
-        return new Email(data.value);
-    }
 }
+superLs.register(Email, (data) => new Email(data.value));
 
-// ❌ NEEDS hydrate - Object.freeze()
+// ✅ NEEDS hydrate - Object.freeze()
 class ImmutableConfig {
     constructor(settings) {
         this.settings = settings;
         Object.freeze(this);
     }
-    static hydrate(data) {
-        return new ImmutableConfig(data.settings);
-    }
 }
+superLs.register(ImmutableConfig, (data) => new ImmutableConfig(data.settings));
 
-// ❌ NEEDS hydrate - destructuring
+// ✅ NEEDS hydrate - destructuring
 class Player {
     constructor({ name, score }) {
         this.name = name;
         this.score = score;
     }
-    static hydrate(data) {
-        return new Player({ name: data.name, score: data.score });
-    }
 }
+superLs.register(Player, (data) => new Player({ name: data.name, score: data.score }));
 ```
 
 ---
@@ -488,7 +496,7 @@ class Player {
 | **Symbol properties** | Not serialized | Use string keys |
 | **Sparse arrays** | Holes become `undefined` | Use dense arrays or objects |
 | **Unregistered classes** | Become plain objects (methods lost) | Register all classes |
-| **Getters/Setters** | Not serialized as values | Work via prototype after restoration |
+| **Getters/Setters** | Not serialized as values | Work via Hydrate Function |
 
 ---
 
@@ -507,8 +515,9 @@ class Player {
 1. Parse string using `devalue`
 2. Recursively traverse parsed data
 3. Detect type metadata and restore class instances
-4. Create instance using:
-   - `hydrate()` if available
+4. Create instance using (in priority order):
+   - Hydrate function passed to `register()` if available
+   - Static `hydrate()` method on the class (backward compatible)
    - Otherwise: `new Constructor()` + `Object.assign()`
 5. Preserve circular references via placeholder morphing
 

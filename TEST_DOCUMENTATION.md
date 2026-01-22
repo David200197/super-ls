@@ -1,6 +1,6 @@
 # SuperLocalStorage Test Documentation
 
-> **Total: 73 tests passing** | 2 test suites | ~45ms execution time
+> **Total: 118 tests passing** | 3 test suites | ~50ms execution time
 
 ## Overview
 
@@ -233,6 +233,82 @@ Stress tests and boundary conditions for robustness validation.
 
 ---
 
+## Test Suite 3: Additional API Methods (45 tests)
+
+Tests for additional API methods: `has()`, `remove()`, `clean()`, `resolve()`, and `register()` with hydrate function.
+
+### has() method (11 tests)
+
+| Test | Description |
+|------|-------------|
+| `should return true for existing key with object value` | Objects are detected as existing |
+| `should return true for existing key with number value` | Numbers are detected as existing |
+| `should return true for existing key with zero value` | Zero (falsy) is detected as existing |
+| `should return true for existing key with false value` | False (falsy) is detected as existing |
+| `should return true for existing key with empty string value` | Empty string (falsy) is detected as existing |
+| `should return true for existing key with empty array` | Empty arrays are detected as existing |
+| `should return true for existing key with empty object` | Empty objects are detected as existing |
+| `should return false for non-existent key` | Missing keys return false |
+| `should return false after key is removed` | Removed keys return false |
+| `should return true for class instances` | Registered class instances are detected |
+| `should return true for Map and Set` | Map and Set are detected as existing |
+
+### remove() method (5 tests)
+
+| Test | Description |
+|------|-------------|
+| `should remove existing key` | Key is removed and returns null on get |
+| `should not throw when removing non-existent key` | Safe to remove missing keys |
+| `should only remove specified key` | Other keys remain unaffected |
+| `should remove class instances` | Registered class instances can be removed |
+| `should remove Map and Set` | Map and Set values can be removed |
+
+### clean() method (4 tests)
+
+| Test | Description |
+|------|-------------|
+| `should remove all keys` | All stored keys are cleared |
+| `should not throw when storage is empty` | Safe to clean empty storage |
+| `should remove class instances` | All class instances are cleared |
+| `should remove mixed types` | All types (primitives, objects, classes) are cleared |
+
+### resolve() method (12 tests)
+
+| Test | Description |
+|------|-------------|
+| `should return existing value if key exists` | Returns stored value without calling resolver |
+| `should call resolver and store result if key does not exist` | Creates and stores new value |
+| `should not call resolver if key exists` | Resolver is not invoked for existing keys |
+| `should call resolver only once for new key` | Resolver called exactly once per new key |
+| `should work with Map as resolved value` | Map can be lazily initialized |
+| `should work with Set as resolved value` | Set can be lazily initialized |
+| `should work with class instances` | Class instances can be lazily initialized |
+| `should return existing class instance without calling resolver` | Existing instances returned directly |
+| `should handle resolver returning primitive values` | Primitives (strings, numbers) work |
+| `should handle resolver returning array` | Arrays can be lazily initialized |
+| `should work with complex nested structures` | Complex objects with Maps/Sets work |
+| `should preserve falsy values (0, false, empty string) as existing` | Falsy values are not overwritten |
+
+### register() with hydrate function as second argument (13 tests)
+
+| Test | Description |
+|------|-------------|
+| `should use hydrate function for class with required constructor args` | Classes with required args work via hydrate function |
+| `should use hydrate function for immutable objects` | Frozen objects remain frozen after deserialization |
+| `should use hydrate function for destructuring constructors` | Classes with `constructor({ name, score })` pattern work |
+| `should support hydrate function with custom type name` | Hydrate function + custom name combination works |
+| `should handle hydrate function with validation logic` | Validation in hydrate function is executed |
+| `should handle hydrate function with complex nested data` | Nested class instances use their respective hydrate functions |
+| `should handle hydrate function with private-like fields` | Underscore-prefixed "private" fields are restored |
+| `should handle nested classes both using hydrate functions` | Parent and child classes both use hydrate functions |
+| `should prioritize hydrate function over static hydrate method` | Function argument takes precedence over static method |
+| `should fall back to static hydrate if no function provided` | Backward compatible with static hydrate pattern |
+| `should work with only custom type name (backward compatible)` | String-only second argument still works |
+| `should handle array of instances with hydrate functions` | Arrays of hydrated instances work correctly |
+| `should handle Map with class instances using hydrate functions` | Map values using hydrate functions work correctly |
+
+---
+
 ## Known Limitations
 
 | Limitation | Behavior |
@@ -242,14 +318,14 @@ Stress tests and boundary conditions for robustness validation.
 | **Functions** | Throw error (not serializable) |
 | **Symbol properties** | Not serialized (standard JSON behavior) |
 | **Unregistered classes** | Converted to plain objects, methods lost |
-| **Getters/Setters** | Not serialized as values, work via prototype after restoration |
+| **Getters/Setters** | Not serialized as values | Work via Hydrate Function |
 
 ---
 
 ## Test Execution Summary
 
 ```
-Test Suites: 2 passed, 2 total
-Tests:       73 passed, 73 total
-Duration:    ~450ms
+Test Suites: 3 passed, 3 total
+Tests:       118 passed, 118 total
+Duration:    ~50ms
 ```

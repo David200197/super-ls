@@ -39,8 +39,14 @@ const DATA_MARKER = '__data__';
  */
 
 /**
- * @typedef {Object} HydratableClass
- * @property {function(Object): any} [hydrate] - Optional static method to create instance from data
+ * @typedef {function(Object): any} HydrateFunction
+ * A function that creates a class instance from serialized data
+ */
+
+/**
+ * @typedef {Object} RegistryEntry
+ * @property {ClassConstructor} Constructor - The class constructor
+ * @property {HydrateFunction|null} hydrate - Optional hydrate function
  */
 
 // ============================================================================
@@ -89,9 +95,9 @@ const hasTypeWrapper = (value) => value[TYPE_MARKER] && value[DATA_MARKER] !== u
  * t.log(recovered.get('theme')); // 'dark'
  * 
  * @example
- * // Usage with custom classes
+ * // Usage with custom classes and hydrate function
  * class Player {
- *     constructor(name = '', score = 0) {
+ *     constructor(name, score) {
  *         this.name = name;
  *         this.score = score;
  *     }
@@ -100,7 +106,7 @@ const hasTypeWrapper = (value) => value[TYPE_MARKER] && value[DATA_MARKER] !== u
  *     }
  * }
  * 
- * superLs.register(Player);
+ * superLs.register(Player, (data) => new Player(data.name, data.score));
  * superLs.set('player', new Player('Alice', 100));
  * 
  * const player = superLs.get('player');
@@ -113,8 +119,8 @@ export class SuperLocalStorage {
      */
     constructor(prefix = DEFAULT_PREFIX) {
         /** 
-         * Registry mapping type names to class constructors
-         * @type {Map<string, ClassConstructor>}
+         * Registry mapping type names to class constructors and hydrate functions
+         * @type {Map<string, RegistryEntry>}
          * @private
          */
         this.registry = new Map();
@@ -137,39 +143,51 @@ export class SuperLocalStorage {
      * Once registered, instances of this class can be stored and retrieved
      * with their methods intact.
      * 
-     * @param {ClassConstructor & HydratableClass} ClassRef - The class constructor to register
-     * @param {string} [typeName=null] - Optional custom type name (defaults to class name)
+     * @param {ClassConstructor} ClassRef - The class constructor to register
+     * @param {HydrateFunction|string} [hydrateOrTypeName=null] - Hydrate function or custom type name
+     * @param {string} [typeName=null] - Custom type name when hydrate function is provided
      * @throws {Error} If ClassRef is not a function/class
      * 
      * @example
-     * // Basic registration
+     * // Basic registration (uses default constructor + Object.assign)
      * superLs.register(Player);
      * 
      * @example
-     * // Registration with custom name (useful for minified code or name collisions)
+     * // Registration with hydrate function
+     * superLs.register(Player, (data) => new Player(data.name, data.score));
+     * 
+     * @example
+     * // Registration with hydrate function and custom type name
+     * superLs.register(Player, (data) => new Player(data.name, data.score), 'GamePlayer');
+     * 
+     * @example
+     * // Registration with only custom type name (backward compatible)
      * superLs.register(Player, 'GamePlayer');
-     * 
-     * @example
-     * // Class with static hydrate method for complex constructors
-     * class Player {
-     *     constructor(name, score) {
-     *         if (!name) throw new Error('Name required');
-     *         this.name = name;
-     *         this.score = score;
-     *     }
-     *     static hydrate(data) {
-     *         return new Player(data.name, data.score);
-     *     }
-     * }
-     * superLs.register(Player);
      */
-    register(ClassRef, typeName = null) {
+    register(ClassRef, hydrateOrTypeName = null, typeName = null) {
         if (typeof ClassRef !== 'function') {
             throw new Error('Invalid class: expected a constructor function');
         }
 
-        const finalName = typeName || ClassRef.name;
-        this.registry.set(finalName, ClassRef);
+        let hydrate = null;
+        let finalTypeName = null;
+
+        if (typeof hydrateOrTypeName === 'function') {
+            // Second argument is hydrate function
+            hydrate = hydrateOrTypeName;
+            finalTypeName = typeName || ClassRef.name;
+        } else if (typeof hydrateOrTypeName === 'string') {
+            // Second argument is type name (backward compatible)
+            finalTypeName = hydrateOrTypeName;
+        } else {
+            // No second argument
+            finalTypeName = ClassRef.name;
+        }
+
+        this.registry.set(finalTypeName, {
+            Constructor: ClassRef,
+            hydrate
+        });
     }
 
     /**
@@ -292,7 +310,7 @@ export class SuperLocalStorage {
      * 
      * @template T
      * @param {string} key - Storage key
-     * @param {function(any): T} resolver - Function that computes the default value if key doesn't exist
+     * @param {function(): T} resolver - Function that computes the default value if key doesn't exist
      * @returns {T} The existing value or the newly resolved and stored value
      * 
      * @example
@@ -312,7 +330,7 @@ export class SuperLocalStorage {
         const exist = this._checkIfExistValue(value)
         if (exist)
             return value;
-        const resolvedValue = resolver(value)
+        const resolvedValue = resolver()
         this.set(key, resolvedValue)
         return resolvedValue
     }
@@ -364,8 +382,8 @@ export class SuperLocalStorage {
      * @private
      */
     _tryWrapRegisteredClass(value, seen) {
-        for (const [name, Constructor] of this.registry.entries()) {
-            if (value instanceof Constructor) {
+        for (const [name, entry] of this.registry.entries()) {
+            if (value instanceof entry.Constructor) {
                 const wrapper = {
                     [TYPE_MARKER]: name,
                     [DATA_MARKER]: {}
@@ -538,16 +556,16 @@ export class SuperLocalStorage {
     }
 
     /**
-     * Rehydrates a wrapped class instance back to its original class
-     * @param {SerializedClassWrapper} value - Wrapped class data
-     * @param {WeakMap} seen - Circular reference tracker
-     * @returns {any} Restored class instance or original value if class not registered
-     * @private
-     */
+    * Rehydrates a wrapped class instance back to its original class
+    * @param {SerializedClassWrapper} value - Wrapped class data
+    * @param {WeakMap} seen - Circular reference tracker
+    * @returns {any} Restored class instance or original value if class not registered
+    * @private
+    */
     _rehydrateClass(value, seen) {
-        const Constructor = this.registry.get(value[TYPE_MARKER]);
+        const entry = this.registry.get(value[TYPE_MARKER]);
 
-        if (!Constructor) {
+        if (!entry) {
             return this._rehydrateObject(value, seen);
         }
 
@@ -561,28 +579,46 @@ export class SuperLocalStorage {
             hydratedData[key] = this._rehydrate(value[DATA_MARKER][key], seen);
         }
 
-        // Create instance using hydrate() or default constructor
-        const instance = this._createInstance(Constructor, hydratedData);
+        // Create instance using the registry entry
+        const instance = this._createInstance(entry, hydratedData);
 
         // Update placeholder to become the actual instance
         Object.assign(placeholder, instance);
         Object.setPrototypeOf(placeholder, Object.getPrototypeOf(instance));
+
+        // Preserve object state (frozen/sealed/non-extensible)
+        if (Object.isFrozen(instance)) {
+            Object.freeze(placeholder);
+        } else if (Object.isSealed(instance)) {
+            Object.seal(placeholder);
+        } else if (!Object.isExtensible(instance)) {
+            Object.preventExtensions(placeholder);
+        }
 
         return placeholder;
     }
 
     /**
      * Creates a class instance from hydrated data
-     * @param {ClassConstructor & HydratableClass} Constructor - Class constructor
+     * @param {RegistryEntry} entry - Registry entry with Constructor and optional hydrate function
      * @param {Object} data - Hydrated property data
      * @returns {any} New class instance
      * @private
      */
-    _createInstance(Constructor, data) {
+    _createInstance(entry, data) {
+        const { Constructor, hydrate } = entry;
+
+        // Priority 1: Use hydrate function from register()
+        if (typeof hydrate === 'function') {
+            return hydrate(data);
+        }
+
+        // Priority 2: Fallback to static hydrate method (backward compatible)
         if (typeof Constructor.hydrate === 'function') {
             return Constructor.hydrate(data);
         }
 
+        // Priority 3: Default constructor + Object.assign
         const instance = new Constructor();
         Object.assign(instance, data);
         return instance;

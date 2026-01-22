@@ -1,14 +1,8 @@
 /**
- * Interface for classes that can be hydrated (reconstructed) from flat data.
+ * Function that creates a class instance from serialized data.
+ * @template T - The type of the class instance
  */
-export interface HydratableClass<T = any> {
-    /**
-     * Optional static method to reconstruct the instance from serialized data.
-     * @param data - The serialized data object containing the instance properties
-     * @returns A new instance of the class
-     */
-    hydrate?(data: any): T;
-}
+export type HydrateFunction<T> = (data: Record<string, any>) => T;
 
 /**
  * SuperLocalStorage - Enhanced localStorage wrapper for Titan Planet
@@ -26,21 +20,21 @@ export interface HydratableClass<T = any> {
  * console.log(recovered.get('theme')); // 'dark'
  * 
  * @example
- * // Usage with custom classes
+ * // Usage with custom classes and hydrate function
  * class Player {
- *     constructor(name = '', score = 0) {
+ *     constructor(name: string, score: number) {
  *         this.name = name;
  *         this.score = score;
  *     }
- *     addScore(points) {
+ *     addScore(points: number) {
  *         this.score += points;
  *     }
  * }
  * 
- * superLs.register(Player);
+ * superLs.register(Player, (data) => new Player(data.name, data.score));
  * superLs.set('player', new Player('Alice', 100));
  * 
- * const player = superLs.get('player');
+ * const player = superLs.get<Player>('player');
  * player.addScore(50); // Methods work!
  */
 export class SuperLocalStorage {
@@ -57,32 +51,39 @@ export class SuperLocalStorage {
      * with their methods intact.
      * 
      * @param ClassRef - The class constructor to register
+     * @param hydrate - Function to create instance from serialized data
      * @param typeName - Optional custom type name (defaults to class name)
      * @throws {Error} If ClassRef is not a function/class
      * 
      * @example
-     * // Basic registration
-     * superLs.register(Player);
+     * // Registration with hydrate function
+     * superLs.register(Player, (data) => new Player(data.name, data.score));
      * 
      * @example
-     * // Registration with custom name (useful for minified code or name collisions)
-     * superLs.register(Player, 'GamePlayer');
-     * 
-     * @example
-     * // Class with static hydrate method for complex constructors
-     * class Player {
-     *     constructor(name, score) {
-     *         if (!name) throw new Error('Name required');
-     *         this.name = name;
-     *         this.score = score;
-     *     }
-     *     static hydrate(data) {
-     *         return new Player(data.name, data.score);
-     *     }
-     * }
-     * superLs.register(Player);
+     * // Registration with hydrate function and custom type name
+     * superLs.register(Player, (data) => new Player(data.name, data.score), 'GamePlayer');
      */
-    register<T>(ClassRef: (new (...args: any[]) => T) & HydratableClass<T>, typeName?: string): void;
+    register<T>(ClassRef: new (...args: any[]) => T, hydrate: HydrateFunction<T>, typeName?: string): void;
+
+    /**
+     * Registers a class for serialization/deserialization support.
+     * 
+     * Once registered, instances of this class can be stored and retrieved
+     * with their methods intact. Uses default constructor + Object.assign for rehydration.
+     * 
+     * @param ClassRef - The class constructor to register
+     * @param typeName - Optional custom type name (defaults to class name)
+     * @throws {Error} If ClassRef is not a function/class
+     * 
+     * @example
+     * // Basic registration (uses default constructor + Object.assign)
+     * superLs.register(Player);
+     * 
+     * @example
+     * // Registration with custom type name
+     * superLs.register(Player, 'GamePlayer');
+     */
+    register<T>(ClassRef: new (...args: any[]) => T, typeName?: string): void;
 
     /**
      * Stores a value in localStorage with full type preservation.
@@ -149,8 +150,8 @@ export class SuperLocalStorage {
     /**
     * Checks if a key exists in localStorage and contains a valid value.
     * 
-    * @param {string} key - Storage key to check
-    * @returns {boolean} True if the key exists and contains a non-null, non-undefined value
+    * @param key - Storage key to check
+    * @returns True if the key exists and contains a non-null, non-undefined value
     * 
     * @example
     * superLs.set('user', { name: 'Alice' });
@@ -164,7 +165,7 @@ export class SuperLocalStorage {
     * 
     * superLs.has('nonexistent'); // false
     */
-    has(key: string): boolean
+    has(key: string): boolean;
 
     /**
      * Clears all values from localStorage that match the instance prefix.
@@ -200,7 +201,7 @@ export class SuperLocalStorage {
      * // Useful for lazy initialization of complex data structures
      * const cache = superLs.resolve('user_cache', () => new Map());
      */
-    resolve<T>(key: string, resolver: (value: any) => T): T;
+    resolve<T>(key: string, resolver: () => T): T;
 }
 
 /**
