@@ -1,4 +1,5 @@
 import { stringify, parse } from 'devalue';
+import { registerExtension } from "./utils/registerExtension.js";
 
 /**
  * @fileoverview SuperLocalStorage - Enhanced localStorage wrapper for Titan Planet
@@ -613,12 +614,6 @@ export class SuperLocalStorage {
 const superLs = new SuperLocalStorage();
 
 // Titan Planet Extension Registration
-if (typeof t !== 'undefined') {
-    try {
-        t["titanpl-superls"] = superLs;
-    } catch (e) {
-        t.log("[titanpl-superls] Failed to register extension:", e);
-    }
-}
+registerExtension("titanpl-superls", superLs)
 
 export default superLs;

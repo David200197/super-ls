@@ -26,4 +26,4 @@ console.log("---------------------------------------------------\n");
 t.get("/test").action("test");
 t.get("/").reply("🚀 Extension Test Harness for titanpl-superls\n\nVisit /test to see extension test results");
 
-await t.start(3000, "Titan Extension Test Running!");
+await t.start(4000, "Titan Extension Test Running!");
