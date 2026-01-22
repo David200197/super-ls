@@ -487,6 +487,111 @@ superLs.register(Player, (data) => new Player({ name: data.name, score: data.sco
 
 ---
 
+## 🔷 TypeScript Usage
+
+### Type Definitions
+
+`super-ls` includes full TypeScript support with generic types:
+
+```typescript
+import superLs from "titanpl-superls";
+
+// Generic get() for type inference
+const player = superLs.get<Player>("player_1");
+player?.greet(); // TypeScript knows this method exists
+
+// Register with full type safety
+superLs.register<Player>(Player, (data) => new Player(data.name, data.score));
+```
+
+### HydrateFunction Type
+
+The `HydrateFunction<T>` type automatically extracts only the non-function properties from your class:
+
+```typescript
+class Player {
+    name: string;
+    score: number;
+    
+    constructor(name: string, score: number) {
+        this.name = name;
+        this.score = score;
+    }
+    
+    greet(): string {
+        return `Hello, I am ${this.name}!`;
+    }
+}
+
+// TypeScript infers: data is { name: string; score: number }
+// Methods like greet() are automatically excluded
+superLs.register(Player, (data) => new Player(data.name, data.score));
+```
+
+### ⚠️ Getter Limitation
+
+**Important**: TypeScript cannot distinguish between getters and regular `readonly` properties at the type level. Both appear identical to the type system:
+
+```typescript
+class Player {
+    name: string;
+    score: number;
+    readonly id: string = crypto.randomUUID();  // Regular readonly property (IS serialized)
+    
+    get fullName(): string {              // Getter (NOT serialized)
+        return `Player: ${this.name}`;
+    }
+    
+    get displayScore(): string {          // Getter (NOT serialized)
+        return `Score: ${this.score}`;
+    }
+}
+
+// TypeScript sees data as:
+// { name: string; score: number; id: string; fullName: string; displayScore: string }
+//                                            ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+//                                            These appear in the type but WON'T exist at runtime!
+
+superLs.register(Player, (data) => {
+    // data.fullName is typed as string, but is actually undefined at runtime
+    // data.displayScore is typed as string, but is actually undefined at runtime
+    return new Player(data.name, data.score);
+});
+```
+
+**Why this happens**: TypeScript's type system treats `get fullName(): string` and `readonly fullName: string` identically. There's no type-level metadata to differentiate them.
+
+**Workarounds**:
+
+1. **Simply ignore getter properties** in your hydrate function (recommended):
+   ```typescript
+   superLs.register(Player, (data) => {
+       // Just don't use data.fullName - it won't exist anyway
+       return new Player(data.name, data.score);
+   });
+   ```
+
+2. **Define an explicit data interface** for complex classes:
+   ```typescript
+   interface PlayerData {
+       name: string;
+       score: number;
+   }
+   
+   superLs.register(Player, (data: PlayerData) => new Player(data.name, data.score));
+   ```
+
+3. **Use a type assertion** to exclude getters manually:
+   ```typescript
+   type PlayerSerializable = Omit<PropertiesOnly<Player>, 'fullName' | 'displayScore'>;
+   
+   superLs.register(Player, (data: PlayerSerializable) => new Player(data.name, data.score));
+   ```
+
+> **Note**: This is a TypeScript limitation, not a `super-ls` limitation. At runtime, `super-ls` correctly serializes only actual properties and ignores getters.
+
+---
+
 ## ⚠️ Known Limitations
 
 | Limitation | Behavior | Workaround |
@@ -496,7 +601,8 @@ superLs.register(Player, (data) => new Player({ name: data.name, score: data.sco
 | **Symbol properties** | Not serialized | Use string keys |
 | **Sparse arrays** | Holes become `undefined` | Use dense arrays or objects |
 | **Unregistered classes** | Become plain objects (methods lost) | Register all classes |
-| **Getters/Setters** | Not serialized as values | Work via Hydrate Function |
+| **Getters/Setters** | Not serialized (computed at runtime) | Use hydrate function to recompute |
+| **TypeScript getters** | Appear in `HydrateFunction<T>` data type but are `undefined` at runtime | Ignore them in hydrate or define explicit data interface (see [TypeScript Usage](#-typescript-usage)) |
 
 ---
 

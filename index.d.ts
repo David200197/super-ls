@@ -1,8 +1,16 @@
 /**
+ * Extracts only non-function properties from a type.
+ * This represents the serialized "data shape" of a class instance.
+ */
+type PropertiesOnly<T> = {
+    [K in keyof T as T[K] extends Function ? never : K]: T[K]
+};
+
+/**
  * Function that creates a class instance from serialized data.
  * @template T - The type of the class instance
  */
-export type HydrateFunction<T> = (data: Record<string, any>) => T;
+export type HydrateFunction<T> = (data: PropertiesOnly<T>) => T;
 
 /**
  * SuperLocalStorage - Enhanced localStorage wrapper for Titan Planet
