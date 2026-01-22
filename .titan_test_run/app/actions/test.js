@@ -39,10 +39,14 @@ export const test = (req) => {
             ]);
 
             superLs.set("user_settings", settings);
-
+            
             const recovered = superLs.get("user_settings");
             t.log(recovered instanceof Map); // true
             t.log(recovered.get("theme"));   // "dark"
+
+            superLs.remove("user_settings");
+
+            t.log("user_settings", superLs.has("user_settings"))
         } catch (e) {
             results.hello_error = String(e);
         }

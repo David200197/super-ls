@@ -52,6 +52,19 @@ export class SuperLocalStorage {
      * const player = superLs.get<Player>('my_player');
      */
     get<T = any>(key: string): T | null;
+
+    /**
+    * Removes a value from localStorage.
+    * @param key - Storage key.
+    */
+    remove(key: string): void;
+
+    /**
+    * Check if a value from localStorage.
+    * 
+    * @param {string} key - Storage key
+    */
+    has(key: string): boolean
 }
 
 /**

@@ -229,6 +229,25 @@ export class SuperLocalStorage {
         return this._rehydrate(parsed, new WeakMap());
     }
 
+    /**
+   * Removes a value from localStorage.
+   * 
+   * @param {string} key - Storage key
+   */
+    remove(key) {
+        t.ls.remove(this.prefix + key);
+    }
+
+    /**
+   * Check if a value from localStorage.
+   * 
+   * @param {string} key - Storage key
+   */
+    has(key) {
+        const value = t.ls.get(key)
+        return value !== null && value !== undefined;
+    }
+
     // ========================================================================
     // Private Methods - Serialization
     // ========================================================================

@@ -59,6 +59,12 @@ superLs.set("emailPattern", /^[\w-]+@[\w-]+\.\w+$/i);
 // BigInt
 superLs.set("bigNumber", BigInt("9007199254740991000"));
 
+//same to ls.remove()
+superLs.remove("lastLogin");
+
+//check if exists the key-value
+superLs.has("lastLogin"); //false
+
 // Circular References
 const obj = { name: "circular" };
 obj.self = obj;
