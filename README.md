@@ -378,7 +378,7 @@ Creates a new storage instance with isolated registry.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `prefix` | `string` | `"sls_"` | Key prefix for all operations |
+| `prefix` | `string` | `"__sls__"` | Key prefix for all operations |
 ```javascript
 import { SuperLocalStorage } from "titanpl-superls";
 const custom = new SuperLocalStorage("myapp_");

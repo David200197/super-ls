@@ -765,7 +765,7 @@ describe('SuperLocalStorage', () => {
         it('should use devalue for serialization', () => {
             superLs.set('internal', { a: 1 });
 
-            const raw = mockStorage.get('sls_internal');
+            const raw = mockStorage.get('__sls__internal');
 
             expect(typeof raw).toBe('string');
             expect(() => parse(raw)).not.toThrow();
@@ -775,7 +775,7 @@ describe('SuperLocalStorage', () => {
             superLs.register(Player);
             superLs.set('meta', new Player('Test', 50));
 
-            const raw = mockStorage.get('sls_meta');
+            const raw = mockStorage.get('__sls__meta');
             const parsed = parse(raw);
 
             expect(parsed.__super_type__).toBe('Player');

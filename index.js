@@ -15,7 +15,7 @@ import { registerExtension } from "./utils/registerExtension.js";
 // ============================================================================
 
 /** @constant {string} Default prefix for all storage keys */
-const DEFAULT_PREFIX = 'sls_';
+const DEFAULT_PREFIX = '__sls__';
 
 /** @constant {string} Metadata key for identifying serialized class type */
 const TYPE_MARKER = '__super_type__';
@@ -115,7 +115,7 @@ const hasTypeWrapper = (value) => value[TYPE_MARKER] && value[DATA_MARKER] !== u
 export class SuperLocalStorage {
     /**
      * Creates a new SuperLocalStorage instance
-     * @param {string} [prefix='sls_'] - Prefix for all storage keys
+     * @param {string} [prefix='__sls__'] - Prefix for all storage keys
      */
     constructor(prefix = DEFAULT_PREFIX) {
         /** 

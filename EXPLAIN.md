@@ -924,7 +924,7 @@ for (const key of Object.keys(value)) {
 ### 6. Why the Prefix System?
 
 ```javascript
-this.prefix = 'sls_';
+this.prefix = '__sls__';
 t.ls.set(this.prefix + key, serialized);
 ```
 

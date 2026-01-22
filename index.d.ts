@@ -48,7 +48,7 @@ export type HydrateFunction<T> = (data: PropertiesOnly<T>) => T;
 export class SuperLocalStorage {
     /**
      * Creates a new SuperLocalStorage instance.
-     * @param prefix - Prefix for all storage keys (default: 'sls_')
+     * @param prefix - Prefix for all storage keys (default: '__sls__')
      */
     constructor(prefix?: string);
 
