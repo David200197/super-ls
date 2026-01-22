@@ -1,5 +1,3 @@
-import { stringify, parse } from 'devalue';
-
 /**
  * Interface for classes that can be hydrated (reconstructed) from flat data.
  */
