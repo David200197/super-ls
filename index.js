@@ -209,8 +209,9 @@ export class SuperLocalStorage {
      * All types are automatically restored to their original form,
      * including registered class instances with working methods.
      * 
+     * @template T
      * @param {string} key - Storage key
-     * @returns {any} The stored value with types restored, or null if key doesn't exist
+     * @returns {T|null} The stored value with types restored, or null if key doesn't exist
      * 
      * @example
      * const settings = superLs.get('user_settings');
@@ -230,22 +231,90 @@ export class SuperLocalStorage {
     }
 
     /**
-   * Removes a value from localStorage.
-   * 
-   * @param {string} key - Storage key
-   */
+     * Removes a value from localStorage.
+     * 
+     * @param {string} key - Storage key to remove
+     * @returns {void}
+     * 
+     * @example
+     * superLs.set('temp_data', { foo: 'bar' });
+     * superLs.remove('temp_data');
+     * superLs.get('temp_data'); // null
+     */
     remove(key) {
         t.ls.remove(this.prefix + key);
     }
 
     /**
-   * Check if a value from localStorage.
-   * 
-   * @param {string} key - Storage key
-   */
+     * Clears all values from localStorage that match the instance prefix.
+     * 
+     * @returns {void}
+     * 
+     * @example
+     * superLs.set('key1', 'value1');
+     * superLs.set('key2', 'value2');
+     * superLs.clean();
+     * // All keys with the instance prefix are now removed
+     */
+    clean() {
+        t.ls.clean()
+    }
+
+    /**
+    * Checks if a key exists in localStorage and contains a valid value.
+    * 
+    * @param {string} key - Storage key to check
+    * @returns {boolean} True if the key exists and contains a non-null, non-undefined value
+    * 
+    * @example
+    * superLs.set('user', { name: 'Alice' });
+    * superLs.has('user'); // true
+    * 
+    * superLs.set('count', 42);
+    * superLs.has('count'); // true
+    * 
+    * superLs.set('active', false);
+    * superLs.has('active'); // true
+    * 
+    * superLs.has('nonexistent'); // false
+    */
     has(key) {
-        const value = t.ls.get(key)
-        return value !== null && value !== undefined;
+        const value = this.get(key)
+        return this._checkIfExistValue(value)
+    }
+
+    /**
+     * Retrieves a value from localStorage, or computes and stores it if not present.
+     * 
+     * This method implements a "get or create" pattern: if the key exists and contains
+     * a valid value, it returns that value. Otherwise, it calls the resolver function,
+     * stores the result, and returns it.
+     * 
+     * @template T
+     * @param {string} key - Storage key
+     * @param {function(any): T} resolver - Function that computes the default value if key doesn't exist
+     * @returns {T} The existing value or the newly resolved and stored value
+     * 
+     * @example
+     * // Returns existing settings or creates default ones
+     * const settings = superLs.resolve('app_settings', () => ({
+     *     theme: 'dark',
+     *     language: 'en',
+     *     notifications: true
+     * }));
+     * 
+     * @example
+     * // Useful for lazy initialization of complex data structures
+     * const cache = superLs.resolve('user_cache', () => new Map());
+     */
+    resolve(key, resolver) {
+        const value = this.get(key)
+        const exist = this._checkIfExistValue(value)
+        if (exist)
+            return value;
+        const resolvedValue = resolver(value)
+        this.set(key, resolvedValue)
+        return resolvedValue
     }
 
     // ========================================================================
@@ -619,6 +688,20 @@ export class SuperLocalStorage {
         }
 
         return obj;
+    }
+
+    /**
+  * Checks if a value exists (is not null or undefined).
+  * 
+  * Since get() returns null for non-existent keys, any non-null/undefined value
+  * indicates the key exists in storage.
+  * 
+  * @param {any} value - Value to check
+  * @returns {boolean} True if value is not null and not undefined
+  * @private
+  */
+    _checkIfExistValue(value) {
+        return value !== undefined && value !== null;
     }
 }
 

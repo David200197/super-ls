@@ -12,6 +12,7 @@
 - **Class Hydration**: Register your custom classes and retrieve fully functional instances with methods intact
 - **Dependency Injection Support**: Serialize/deserialize nested class instances and complex object graphs
 - **Circular Reference Handling**: Automatic detection and preservation of circular references
+- **Lazy Initialization**: Use `resolve()` for "get or create" patterns
 - **Drop-in Library**: Works via standard ES module `import` without polluting the global `t` namespace
 - **Titan Native Integration**: Built on top of `@titanpl/core`'s `t.ls` for persistence
 
@@ -20,7 +21,6 @@
 ## 📦 Installation
 
 Add `super-ls` to your Titan Planet project:
-
 ```bash
 npm install titanpl-superls
 ```
@@ -32,7 +32,6 @@ npm install titanpl-superls
 ### Basic Usage (Rich Data Types)
 
 Store objects that standard JSON cannot handle:
-
 ```javascript
 import superLs from "titanpl-superls";
 
@@ -59,11 +58,15 @@ superLs.set("emailPattern", /^[\w-]+@[\w-]+\.\w+$/i);
 // BigInt
 superLs.set("bigNumber", BigInt("9007199254740991000"));
 
-//same to ls.remove()
+// Remove a specific key
 superLs.remove("lastLogin");
 
-//check if exists the key-value
-superLs.has("lastLogin"); //false
+// Check if a key exists and has a valid value
+superLs.has("lastLogin"); // false
+superLs.has("user_settings"); // true
+
+// Clear all storage
+superLs.clean();
 
 // Circular References
 const obj = { name: "circular" };
@@ -74,12 +77,32 @@ const restored = superLs.get("circular");
 t.log(restored.self === restored); // true
 ```
 
+### Lazy Initialization with `resolve()`
+
+The `resolve()` method implements a "get or create" pattern - perfect for lazy initialization:
+```javascript
+import superLs from "titanpl-superls";
+
+// Returns existing settings or creates default ones
+const settings = superLs.resolve("app_settings", () => ({
+    theme: "dark",
+    language: "en",
+    notifications: true
+}));
+
+// Perfect for caches and complex data structures
+const userCache = superLs.resolve("user_cache", () => new Map());
+
+// Works great with class instances too
+superLs.register(Player);
+const player = superLs.resolve("current_player", () => new Player("Guest", 0));
+```
+
 ### Class Hydration
 
 The true power of `super-ls` lies in its ability to restore class instances with their methods intact.
 
 #### 1. Define and Register Your Class
-
 ```javascript
 import superLs from "titanpl-superls";
 
@@ -103,7 +126,6 @@ superLs.register(Player);
 ```
 
 #### 2. Save and Restore
-
 ```javascript
 const player = new Player("Alice", 100);
 superLs.set("player_1", player);
@@ -115,14 +137,13 @@ t.log(restored.name);              // "Alice"
 t.log(restored.greet());           // "Hello, I am Alice!"
 t.log(restored instanceof Player); // true
 
-restored.addScore(50);                   // Methods work!
+restored.addScore(50);             // Methods work!
 t.log(restored.score);             // 150
 ```
 
 ### Dependency Injection Pattern
 
 `super-ls` supports nested class instances, making it perfect for DI patterns:
-
 ```javascript
 class Weapon {
     constructor(name = "", damage = 0) {
@@ -167,7 +188,6 @@ t.log(restored.fight());                   // "Arthur: Excalibur deals 50 damage
 ### Custom Hydration (Complex Constructors)
 
 For classes with required constructor arguments or complex initialization:
-
 ```javascript
 class ImmutableUser {
     constructor(id, email) {
@@ -194,7 +214,6 @@ const restored = superLs.get("user"); // Works! Uses hydrate() internally
 ### Custom Type Names
 
 Useful for minified code or avoiding name collisions:
-
 ```javascript
 // Two modules both export "User" class
 import { User as AdminUser } from "./admin";
@@ -207,7 +226,6 @@ superLs.register(CustomerUser, "CustomerUser");
 ### Multiple Storage Instances
 
 For isolated registries or different prefixes:
-
 ```javascript
 import { SuperLocalStorage } from "titanpl-superls";
 
@@ -218,7 +236,7 @@ gameStorage.register(Player);
 userStorage.register(Profile);
 
 // Keys are prefixed automatically
-gameStorage.set("hero", player);   // Stored as "game_hero"
+gameStorage.set("hero", player);     // Stored as "game_hero"
 userStorage.set("current", profile); // Stored as "user_current"
 ```
 
@@ -236,7 +254,6 @@ Stores any JavaScript value in Titan storage.
 | `value` | `any` | Data to store |
 
 **Supported types**: primitives, objects, arrays, `Map`, `Set`, `Date`, `RegExp`, `BigInt`, `TypedArray`, `undefined`, `NaN`, `Infinity`, circular references, registered class instances.
-
 ```javascript
 superLs.set("config", { theme: "dark", items: new Set([1, 2, 3]) });
 ```
@@ -249,12 +266,83 @@ Retrieves and deserializes a value with full type restoration.
 |-----------|------|-------------|
 | `key` | `string` | Storage key |
 | **Returns** | `any \| null` | Restored value or `null` if not found |
-
 ```javascript
 const config = superLs.get("config");
 if (config) {
     t.log(config.items instanceof Set); // true
 }
+```
+
+### `superLs.remove(key)`
+
+Removes a value from storage.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key to remove |
+```javascript
+superLs.set("temp_data", { foo: "bar" });
+superLs.remove("temp_data");
+superLs.get("temp_data"); // null
+```
+
+### `superLs.has(key)`
+
+Checks if a key exists in storage and contains a valid value.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key to check |
+| **Returns** | `boolean` | `true` if key exists and contains a non-null, non-undefined value |
+```javascript
+superLs.set("user", { name: "Alice" });
+superLs.has("user"); // true
+
+superLs.set("count", 42);
+superLs.has("count"); // true
+
+superLs.set("active", false);
+superLs.has("active"); // true
+
+superLs.set("name", "Bob");
+superLs.has("name"); // true
+
+superLs.has("nonexistent"); // false
+```
+
+### `superLs.clean()`
+
+Clears all values from storage that match the instance prefix.
+```javascript
+superLs.set("key1", "value1");
+superLs.set("key2", "value2");
+superLs.clean();
+// All keys with the instance prefix are now removed
+```
+
+### `superLs.resolve(key, resolver)`
+
+Retrieves a value from storage, or computes and stores it if not present. Implements a "get or create" pattern for lazy initialization.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key |
+| `resolver` | `function` | Function that computes the default value if key doesn't exist |
+| **Returns** | `any` | The existing value or the newly resolved and stored value |
+```javascript
+// Returns existing settings or creates default ones
+const settings = superLs.resolve("app_settings", () => ({
+    theme: "dark",
+    language: "en",
+    notifications: true
+}));
+
+// Useful for lazy initialization of complex data structures
+const cache = superLs.resolve("user_cache", () => new Map());
+
+// Works with registered classes
+superLs.register(Player);
+const player = superLs.resolve("player", () => new Player("Guest", 0));
 ```
 
 ### `superLs.register(ClassRef, typeName?)`
@@ -265,7 +353,6 @@ Registers a class for automatic serialization/deserialization.
 |-----------|------|-------------|
 | `ClassRef` | `Function` | Class constructor |
 | `typeName` | `string?` | Custom type name (defaults to `ClassRef.name`) |
-
 ```javascript
 superLs.register(Player);
 superLs.register(Enemy, "GameEnemy"); // Custom name
@@ -278,7 +365,6 @@ Creates a new storage instance with isolated registry.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `prefix` | `string` | `"sls_"` | Key prefix for all operations |
-
 ```javascript
 import { SuperLocalStorage } from "titanpl-superls";
 const custom = new SuperLocalStorage("myapp_");
@@ -289,14 +375,12 @@ const custom = new SuperLocalStorage("myapp_");
 ## 🎯 When to Use Static `hydrate()` Method
 
 By default, `super-ls` reconstructs class instances like this:
-
 ```javascript
 const instance = new Constructor();  // Calls constructor WITHOUT arguments
 Object.assign(instance, data);       // Copies properties
 ```
 
 This works **only if** your constructor can be called without arguments:
-
 ```javascript
 // ✅ WORKS - has default values
 class Player {
@@ -308,7 +392,6 @@ class Player {
 ```
 
 But **fails** if constructor requires arguments:
-
 ```javascript
 // ❌ FAILS - required arguments
 class Player {
@@ -325,7 +408,6 @@ class Player {
 ### The Solution
 
 Define a static `hydrate()` method that tells `super-ls` how to reconstruct your class:
-
 ```javascript
 class Player {
     constructor(name, score) {
@@ -353,7 +435,6 @@ class Player {
 | Destructuring params | ✅ Yes | `constructor({ name, score })` |
 
 ### Examples
-
 ```javascript
 // ✅ NO hydrate needed - has defaults
 class Counter {
@@ -438,7 +519,6 @@ For detailed technical documentation, see [EXPLAIN.md](./EXPLAIN.md).
 ## 🧪 Testing
 
 The library includes comprehensive test suites:
-
 ```bash
 # Install dependencies
 npm install
@@ -459,7 +539,6 @@ See [TEST_DOCUMENTATION.md](./TEST_DOCUMENTATION.md) for detailed test descripti
 ---
 
 ## 📁 Project Structure
-
 ```
 super-ls/
 ├── index.js              # Main implementation
