@@ -23,7 +23,7 @@
 
 Add `super-ls` to your Titan Planet project:
 ```bash
-npm install titanpl-superls
+npm install @t8n/super-ls
 ```
 
 ---
@@ -34,7 +34,7 @@ npm install titanpl-superls
 
 Store objects that standard JSON cannot handle:
 ```javascript
-import superLs from "titanpl-superls";
+import superLs from "@t8n/super-ls";
 
 // Maps
 const settings = new Map([
@@ -82,7 +82,7 @@ t.log(restored.self === restored); // true
 
 The `resolve()` method implements a "get or create" pattern - perfect for lazy initialization:
 ```javascript
-import superLs from "titanpl-superls";
+import superLs from "@t8n/super-ls";
 
 // Returns existing settings or creates default ones
 const settings = superLs.resolve("app_settings", () => ({
@@ -105,7 +105,7 @@ The true power of `super-ls` lies in its ability to restore class instances with
 
 #### 1. Define and Register Your Class
 ```javascript
-import superLs from "titanpl-superls";
+import superLs from "@t8n/super-ls";
 
 class Player {
     constructor(name = "", score = 0) {
@@ -229,7 +229,7 @@ superLs.register(CustomerUser, (data) => new CustomerUser(data.id), "CustomerUse
 
 For isolated registries or different prefixes:
 ```javascript
-import { SuperLocalStorage } from "titanpl-superls";
+import { SuperLocalStorage } from "@t8n/super-ls";
 
 const gameStorage = new SuperLocalStorage("game_");
 const userStorage = new SuperLocalStorage("user_");
@@ -380,7 +380,7 @@ Creates a new storage instance with isolated registry.
 |-----------|------|---------|-------------|
 | `prefix` | `string` | `"__sls__"` | Key prefix for all operations |
 ```javascript
-import { SuperLocalStorage } from "titanpl-superls";
+import { SuperLocalStorage } from "@t8n/super-ls";
 const custom = new SuperLocalStorage("myapp_");
 ```
 
@@ -494,7 +494,7 @@ superLs.register(Player, (data) => new Player({ name: data.name, score: data.sco
 `super-ls` includes full TypeScript support with generic types:
 
 ```typescript
-import superLs from "titanpl-superls";
+import superLs from "@t8n/super-ls";
 
 // Generic get() for type inference
 const player = superLs.get<Player>("player_1");
