@@ -1,6 +1,7 @@
+
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SuperLocalStorage } from "../index.js";
-import { clearAllMocks, mockStorage, mockObjectStorage } from './_mocks_.js';
+import { clearAllMocks, mockStorage, mockObjectStorage } from './__mocks__.js';
 
 // ============================================
 // ADDITIONAL API TESTS
@@ -339,7 +340,7 @@ describe('SuperLocalStorage - Additional API Methods', () => {
         it('should store and retrieve objects', () => {
             const obj = { name: 'Alice', score: 100 };
             superLs.setTemp('tempObj', obj);
-            
+
             const retrieved = superLs.getTemp('tempObj');
             expect(retrieved).toEqual(obj);
         });
@@ -352,7 +353,7 @@ describe('SuperLocalStorage - Additional API Methods', () => {
 
             const player = new Player('Bob');
             superLs.setTemp('tempPlayer', player);
-            
+
             const retrieved = superLs.getTemp('tempPlayer');
             // In-memory storage preserves the exact reference
             expect(retrieved).toBeInstanceOf(Player);
@@ -403,7 +404,7 @@ describe('SuperLocalStorage - Additional API Methods', () => {
         it('should store functions (unlike persistent storage)', () => {
             const fn = (x) => x * 2;
             superLs.setTemp('func', fn);
-            
+
             const retrieved = superLs.getTemp('func');
             expect(typeof retrieved).toBe('function');
             expect(retrieved(5)).toBe(10);
@@ -473,8 +474,8 @@ describe('SuperLocalStorage - Additional API Methods', () => {
 
         it('should work with class instances', () => {
             class Cache {
-                constructor() { 
-                    this.data = new Map(); 
+                constructor() {
+                    this.data = new Map();
                     this.created = Date.now();
                 }
                 set(k, v) { this.data.set(k, v); }
@@ -498,9 +499,9 @@ describe('SuperLocalStorage - Additional API Methods', () => {
         it('should serialize and deserialize simple values', () => {
             const original = { name: 'Alice', age: 30 };
             const bytes = superLs.serialize(original);
-            
+
             expect(bytes).toBeInstanceOf(Uint8Array);
-            
+
             const restored = superLs.deserialize(bytes);
             expect(restored).toEqual(original);
         });
@@ -992,7 +993,7 @@ describe('SuperLocalStorage - Additional API Methods', () => {
             // Verify data is stored as base64 encoded V8 serialized bytes
             const raw = mockStorage.get('__sls__native');
             expect(typeof raw).toBe('string');
-            
+
             // Should be valid base64
             expect(() => t.core.buffer.fromBase64(raw)).not.toThrow();
         });

@@ -1,4 +1,5 @@
-import { clearAllMocks, mockStorage } from './_mocks_.js';
+
+import { clearAllMocks, mockStorage } from './__mocks__.js';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SuperLocalStorage } from "../index.js";
 

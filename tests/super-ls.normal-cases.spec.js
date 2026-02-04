@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SuperLocalStorage } from "../index.js"
-import { clearAllMocks, mockStorage } from './_mocks_.js';
+import { clearAllMocks, mockStorage } from './__mocks__.js';
 
 // ============================================
 // Test Classes
@@ -180,7 +181,7 @@ class UserService {
     static hydrate(data) {
         const instance = new UserService();
         instance.serviceName = data.serviceName;
-        
+
         // Manually reconstruct dependencies if they exist
         if (data.database) {
             instance.database = new Database();
@@ -189,12 +190,12 @@ class UserService {
                 instance.database.data = new Map(Object.entries(data.database.data));
             }
         }
-        
+
         if (data.logger) {
             instance.logger = new Logger(data.logger.prefix);
             instance.logger.logs = data.logger.logs || [];
         }
-        
+
         return instance;
     }
 }
@@ -418,7 +419,7 @@ describe('SuperLocalStorage', () => {
         it('should store and retrieve class with single dependency', () => {
             const sword = new Weapon('Excalibur', 50);
             const warrior = new Warrior('Arthur', sword);
-            
+
             superLs.set('warrior', warrior);
             const recovered = superLs.get('warrior');
 
@@ -432,7 +433,7 @@ describe('SuperLocalStorage', () => {
         it('should preserve dependency methods', () => {
             const axe = new Weapon('Battle Axe', 75);
             const warrior = new Warrior('Ragnar', axe);
-            
+
             superLs.set('viking', warrior);
             const recovered = superLs.get('viking');
 
@@ -442,7 +443,7 @@ describe('SuperLocalStorage', () => {
 
         it('should handle null dependency gracefully', () => {
             const unarmedWarrior = new Warrior('Peasant', null);
-            
+
             superLs.set('peasant', unarmedWarrior);
             const recovered = superLs.get('peasant');
 
@@ -454,7 +455,7 @@ describe('SuperLocalStorage', () => {
         it('should preserve dependency as proper class instance', () => {
             const dagger = new Weapon('Shadow Dagger', 30);
             const assassin = new Warrior('Shadow', dagger);
-            
+
             superLs.set('assassin', assassin);
             const recovered = superLs.get('assassin');
 
@@ -476,24 +477,24 @@ describe('SuperLocalStorage', () => {
             const steel = new Material('Steel', 25);
             const plateArmor = new Armor('heavy', steel);
             const sword = new Weapon('Longsword', 40);
-            
+
             const knight = new Knight('Lancelot');
             knight.equip(sword, plateArmor);
-            
+
             superLs.set('knight', knight);
             const recovered = superLs.get('knight');
 
             expect(recovered).toBeInstanceOf(Knight);
             expect(recovered.name).toBe('Lancelot');
-            
+
             // Check weapon dependency
             expect(recovered.weapon).toBeDefined();
             expect(recovered.weapon.name).toBe('Longsword');
-            
+
             // Check armor dependency
             expect(recovered.armor).toBeDefined();
             expect(recovered.armor.type).toBe('heavy');
-            
+
             // Check nested material dependency
             expect(recovered.armor.material).toBeDefined();
             expect(recovered.armor.material.name).toBe('Steel');
@@ -503,17 +504,17 @@ describe('SuperLocalStorage', () => {
             const mithril = new Material('Mithril', 50);
             const elvenArmor = new Armor('light', mithril);
             const bow = new Weapon('Elven Bow', 35);
-            
+
             const knight = new Knight('Legolas');
             knight.equip(bow, elvenArmor);
-            
+
             superLs.set('elf', knight);
             const recovered = superLs.get('elf');
 
             // Test nested method chain
             expect(recovered.armor.material.getProtection()).toBe(100); // 50 * 2
             expect(recovered.armor.getDefense()).toBe(125); // 25 (light) + 100
-            
+
             const stats = recovered.getStats();
             expect(stats.attack).toBe(35);
             expect(stats.defense).toBe(125);
@@ -523,10 +524,10 @@ describe('SuperLocalStorage', () => {
             const iron = new Material('Iron', 15);
             const chainmail = new Armor('light', iron);
             const mace = new Weapon('War Mace', 45);
-            
+
             const knight = new Knight('Gawain');
             knight.equip(mace, chainmail);
-            
+
             superLs.set('knight2', knight);
             const recovered = superLs.get('knight2');
 
@@ -547,9 +548,9 @@ describe('SuperLocalStorage', () => {
             const logger = new Logger('[UserService]');
             const database = new Database();
             database.connect();
-            
+
             const userService = new UserService(database, logger);
-            
+
             superLs.set('userService', userService);
             const recovered = superLs.get('userService');
 
@@ -563,14 +564,14 @@ describe('SuperLocalStorage', () => {
             const logger = new Logger('[APP]');
             logger.log('Application started');
             logger.log('Loading config');
-            
+
             const database = new Database();
             database.connect();
             database.save('user1', { id: 'user1', name: 'John' });
-            
+
             const userService = new UserService(database, logger);
             userService.createUser('user2', 'Jane');
-            
+
             superLs.set('service', userService);
             const recovered = superLs.get('service');
 
@@ -583,12 +584,12 @@ describe('SuperLocalStorage', () => {
         it('should work with services using static hydrate', () => {
             const logger = new Logger('[HYDRATE]');
             logger.log('Test message');
-            
+
             const database = new Database();
             database.save('key1', { data: 'value1' });
-            
+
             const service = new UserService(database, logger);
-            
+
             superLs.set('hydratedService', service);
             const recovered = superLs.get('hydratedService');
 
@@ -609,10 +610,10 @@ describe('SuperLocalStorage', () => {
             const parent = new Parent('John');
             const child1 = new Child('Alice');
             const child2 = new Child('Bob');
-            
+
             parent.addChild(child1);
             parent.addChild(child2);
-            
+
             superLs.set('family', parent);
             const recovered = superLs.get('family');
 
@@ -624,9 +625,9 @@ describe('SuperLocalStorage', () => {
         it('should preserve bidirectional references', () => {
             const parent = new Parent('Mary');
             const child = new Child('Tom');
-            
+
             parent.addChild(child);
-            
+
             superLs.set('parentChild', parent);
             const recovered = superLs.get('parentChild');
 
@@ -650,10 +651,10 @@ describe('SuperLocalStorage', () => {
                 new Weapon('Axe', 40),
                 new Weapon('Bow', 25)
             ];
-            
+
             // Store as plain object with array of registered classes
             const armory = { weapons, owner: 'Kingdom' };
-            
+
             superLs.set('armory', armory);
             const recovered = superLs.get('armory');
 
@@ -666,7 +667,7 @@ describe('SuperLocalStorage', () => {
             const inventory = new Map();
             inventory.set('primary', new Weapon('Main Sword', 50));
             inventory.set('secondary', new Weapon('Dagger', 20));
-            
+
             superLs.set('inventory', inventory);
             const recovered = superLs.get('inventory');
 
@@ -747,10 +748,10 @@ describe('SuperLocalStorage', () => {
 
             // Should be a Base64-encoded string
             expect(typeof raw).toBe('string');
-            
+
             // Should be valid Base64 (decodable)
             expect(() => t.core.buffer.fromBase64(raw)).not.toThrow();
-            
+
             // Decoded should be Uint8Array
             const bytes = t.core.buffer.fromBase64(raw);
             expect(bytes).toBeInstanceOf(Uint8Array);
@@ -761,7 +762,7 @@ describe('SuperLocalStorage', () => {
             superLs.set('meta', new Player('Test', 50));
 
             const raw = mockStorage.get('__sls__meta');
-            
+
             // Decode and deserialize
             const bytes = t.core.buffer.fromBase64(raw);
             const parsed = t.ls.deserialize(bytes);
@@ -812,8 +813,8 @@ describe('SuperLocalStorage', () => {
         });
 
         it('should expose deserialize() method', () => {
-            const original = { 
-                name: 'test', 
+            const original = {
+                name: 'test',
                 map: new Map([['a', 1]]),
                 date: new Date()
             };
