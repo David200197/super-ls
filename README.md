@@ -1,4 +1,4 @@
-# 🪐 @titanpl/super-ls
+# 🪐 @t8n/super-ls
 
 > A supercharged storage adapter for Titan Planet that enables storing complex objects, circular references, and Class instances with automatic rehydration.
 

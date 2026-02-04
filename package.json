@@ -10,7 +10,8 @@
         "test:ext": "titan run ext",
         "test": "vitest run",
         "test:watch": "vitest",
-        "test:cov": "vitest --coverage"
+        "test:cov": "vitest --coverage",
+        "ext": "titan run ext"
     },
     "keywords": [
         "titan planet",
