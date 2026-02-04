@@ -1,5 +1,10 @@
 import t from "../titan/titan.js";
-import "titanpl-superls";
+
+// 1. Expose 't' globally because extensions expect it (like in the real runtime)
+globalThis.t = t;
+
+// 2. Dynamic import ensures 't' is set BEFORE the extension loads
+await import("titanpl-superls");
 
 // Extension test harness for: titanpl-superls
 const ext = t["titanpl-superls"];
@@ -13,6 +18,28 @@ if (!ext) {
 } else {
     console.log("✓ Extension loaded successfully!");
     console.log("✓ Available methods:", Object.keys(ext).join(", "));
+    
+    // Try 'hello' if it exists
+    if (typeof ext.hello === 'function') {
+        console.log("\nTesting ext.hello('Titan')...");
+        try {
+           const res = ext.hello("Titan");
+           console.log("✓ Result:", res);
+        } catch(e) {
+           console.log("✗ Error:", e.message);
+        }
+    }
+
+    // Try 'calc' if it exists
+    if (typeof ext.calc === 'function') {
+        console.log("\nTesting ext.calc(10, 20)...");
+        try {
+            const res = ext.calc(10, 20);
+            console.log("✓ Result:", res);
+        } catch(e) {
+            console.log("✗ Error:", e.message);
+        }
+    }
 }
 
 console.log("---------------------------------------------------");

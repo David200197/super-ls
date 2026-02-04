@@ -2,20 +2,23 @@
 
 > A supercharged storage adapter for Titan Planet that enables storing complex objects, circular references, and Class instances with automatic rehydration.
 
-`super-ls` extends the capabilities of the native `t.ls` API by using `devalue` for serialization. While standard `t.ls` is limited to simple JSON data, `super-ls` allows you to save and retrieve rich data structures effortlessly.
+`super-ls` extends the capabilities of the native `t.ls` API by leveraging **native V8 serialization** via `@titanpl/core`. While standard `t.ls` is limited to simple string data, `super-ls` allows you to save and retrieve rich data structures effortlessly with **maximum performance**.
 
 ---
 
 ## ✨ Features
 
+- **Native V8 Serialization**: Uses Rust-powered `t.ls.serialize/deserialize` for maximum performance
 - **Rich Data Types**: Store `Map`, `Set`, `Date`, `RegExp`, `BigInt`, `TypedArray`, `undefined`, `NaN`, `Infinity`, and circular references
 - **Class Hydration**: Register your custom classes and retrieve fully functional instances with methods intact
 - **Flexible Hydration**: Pass a hydrate function directly to `register()` for complete control over instance reconstruction
 - **Dependency Injection Support**: Serialize/deserialize nested class instances and complex object graphs
 - **Circular Reference Handling**: Automatic detection and preservation of circular references
 - **Lazy Initialization**: Use `resolve()` for "get or create" patterns
+- **In-Memory Cache**: Use `setTemp()`/`getTemp()` for fast thread-local caching
+- **Direct Serialization Access**: Use `serialize()`/`deserialize()` for custom storage needs
 - **Drop-in Library**: Works via standard ES module `import` without polluting the global `t` namespace
-- **Titan Native Integration**: Built on top of `@titanpl/core`'s `t.ls` for persistence
+- **Titan Native Integration**: Built on top of `@titanpl/core`'s native Rust bindings
 
 ---
 
@@ -97,6 +100,47 @@ const userCache = superLs.resolve("user_cache", () => new Map());
 // Works great with class instances too
 superLs.register(Player);
 const player = superLs.resolve("current_player", () => new Player("Guest", 0));
+```
+
+### In-Memory Cache with `setTemp()` / `getTemp()`
+
+For data that only needs to persist within the current request/action (same V8 thread):
+```javascript
+import superLs from "@t8n/super-ls";
+
+// Cache expensive computation for reuse in same request
+superLs.setTemp("computed_data", heavyComputation());
+
+// Later in the same request...
+const data = superLs.getTemp("computed_data"); // Fast retrieval, no disk I/O
+
+// Use resolveTemp() for "get or compute" pattern
+const result = superLs.resolveTemp("expensive_calc", () => {
+    return performExpensiveCalculation();
+});
+```
+
+> ⚠️ **Note**: `setTemp`/`getTemp` data does NOT persist across different requests or threads. Use regular `set`/`get` for persistent storage.
+
+### Direct Serialization Access
+
+For custom storage or network transmission needs:
+```javascript
+import superLs from "@t8n/super-ls";
+
+// Serialize to Uint8Array (uses native V8 serialization)
+const bytes = superLs.serialize({ 
+    complex: new Map([['a', 1]]),
+    date: new Date(),
+    set: new Set([1, 2, 3])
+});
+
+// Send bytes over network, store in custom location, etc.
+await sendToServer(bytes);
+
+// Deserialize back to original types
+const value = superLs.deserialize(bytes);
+t.log(value.complex instanceof Map); // true
 ```
 
 ### Class Hydration
@@ -246,9 +290,11 @@ userStorage.set("current", profile); // Stored as "user_current"
 
 ## 📚 API Reference
 
-### `superLs.set(key, value)`
+### Core Storage Methods
 
-Stores any JavaScript value in Titan storage.
+#### `superLs.set(key, value)`
+
+Stores any JavaScript value in Titan storage using native V8 serialization.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -260,7 +306,7 @@ Stores any JavaScript value in Titan storage.
 superLs.set("config", { theme: "dark", items: new Set([1, 2, 3]) });
 ```
 
-### `superLs.get(key)`
+#### `superLs.get(key)`
 
 Retrieves and deserializes a value with full type restoration.
 
@@ -275,7 +321,7 @@ if (config) {
 }
 ```
 
-### `superLs.remove(key)`
+#### `superLs.remove(key)`
 
 Removes a value from storage.
 
@@ -288,7 +334,7 @@ superLs.remove("temp_data");
 superLs.get("temp_data"); // null
 ```
 
-### `superLs.has(key)`
+#### `superLs.has(key)`
 
 Checks if a key exists in storage and contains a valid value.
 
@@ -306,23 +352,20 @@ superLs.has("count"); // true
 superLs.set("active", false);
 superLs.has("active"); // true
 
-superLs.set("name", "Bob");
-superLs.has("name"); // true
-
 superLs.has("nonexistent"); // false
 ```
 
-### `superLs.clean()`
+#### `superLs.clean()`
 
-Clears all values from storage that match the instance prefix.
+Clears all values from storage.
 ```javascript
 superLs.set("key1", "value1");
 superLs.set("key2", "value2");
 superLs.clean();
-// All keys with the instance prefix are now removed
+// All keys are now removed
 ```
 
-### `superLs.resolve(key, resolver)`
+#### `superLs.resolve(key, resolver)`
 
 Retrieves a value from storage, or computes and stores it if not present. Implements a "get or create" pattern for lazy initialization.
 
@@ -347,9 +390,93 @@ superLs.register(Player);
 const player = superLs.resolve("player", () => new Player("Guest", 0));
 ```
 
-### `superLs.register(ClassRef, hydrateOrTypeName?, typeName?)`
+---
 
-Registers a class for automatic serialization/deserialization.
+### Temporary Storage Methods (In-Memory, Current Thread Only)
+
+#### `superLs.setTemp(key, value)`
+
+Stores a value in temporary memory storage (current V8 thread only).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key |
+| `value` | `any` | Data to store |
+
+> ⚠️ Data does NOT persist across different requests or threads.
+
+```javascript
+// Cache expensive computation for reuse in same request
+superLs.setTemp("computed_data", heavyComputation());
+```
+
+#### `superLs.getTemp(key)`
+
+Retrieves a value from temporary memory storage.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key |
+| **Returns** | `any \| undefined` | Stored value or `undefined` if not found |
+```javascript
+const cached = superLs.getTemp("computed_data");
+if (cached) {
+    // Use cached value
+}
+```
+
+#### `superLs.resolveTemp(key, resolver)`
+
+Retrieves a value from temporary storage, or computes and stores it if not present.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key |
+| `resolver` | `function` | Function that computes the value if not cached |
+| **Returns** | `any` | The cached or newly computed value |
+```javascript
+// Memoize expensive operation within current request
+const result = superLs.resolveTemp("expensive_calc", () => {
+    return performExpensiveCalculation();
+});
+```
+
+---
+
+### Serialization Utilities
+
+#### `superLs.serialize(value)`
+
+Serializes any JavaScript value to a `Uint8Array` using native V8 serialization.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `value` | `any` | Value to serialize |
+| **Returns** | `Uint8Array` | Serialized bytes |
+```javascript
+const bytes = superLs.serialize({ complex: new Map([['a', 1]]) });
+// Send bytes over network, store in custom location, etc.
+```
+
+#### `superLs.deserialize(bytes)`
+
+Deserializes a `Uint8Array` back to the original JavaScript value.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `bytes` | `Uint8Array` | Serialized bytes |
+| **Returns** | `any` | Deserialized and rehydrated value |
+```javascript
+const value = superLs.deserialize(bytes);
+```
+
+---
+
+### Class Registration
+
+#### `superLs.register(ClassRef, hydrateOrTypeName?, typeName?)`
+
+Registers a class for automatic serialization/deserialization. Delegates to native `t.ls.register()` for optimal performance.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -372,7 +499,11 @@ superLs.register(Player, (data) => new Player(data.name, data.score), "GamePlaye
 superLs.register(Player, "GamePlayer");
 ```
 
-### `new SuperLocalStorage(prefix?)`
+---
+
+### Instance Creation
+
+#### `new SuperLocalStorage(prefix?)`
 
 Creates a new storage instance with isolated registry.
 
@@ -628,29 +759,41 @@ superLs.register(Player, (data) => {
 | **Unregistered classes** | Become plain objects (methods lost) | Register all classes |
 | **Getters/Setters** | Not serialized (computed at runtime) | Use hydrate function to recompute |
 | **TypeScript getters** | Appear in `HydrateFunction<T>` data type but are `undefined` at runtime | Ignore them in hydrate or use explicit data type with second generic `H` (see [TypeScript Usage](#-typescript-usage)) |
+| **Temp storage** | Only persists in current V8 thread | Use `set()`/`get()` for persistent storage |
 
 ---
 
 ## 🔧 Under the Hood
 
-`super-ls` uses a two-phase transformation:
+`super-ls` uses native V8 serialization via `@titanpl/core` for maximum performance.
 
 ### Serialization (`set`)
 1. Recursively traverse the value
 2. Wrap registered class instances with type metadata (`__super_type__`, `__data__`)
 3. Track circular references via `WeakMap`
-4. Serialize using `devalue` (handles `Map`, `Set`, `Date`, etc.)
-5. Store string in `t.ls`
+4. Serialize using native `t.ls.serialize()` (V8 ValueSerializer)
+5. Encode bytes to Base64 via `t.core.buffer.toBase64()`
+6. Store string in `t.ls`
 
 ### Deserialization (`get`)
-1. Parse string using `devalue`
-2. Recursively traverse parsed data
-3. Detect type metadata and restore class instances
-4. Create instance using (in priority order):
-   - Hydrate function passed to `register()` if available
-   - Static `hydrate()` method on the class (backward compatible)
+1. Retrieve Base64 string from `t.ls`
+2. Decode bytes via `t.core.buffer.fromBase64()`
+3. Deserialize using native `t.ls.deserialize()` (V8 ValueDeserializer)
+4. Recursively traverse parsed data
+5. Detect type metadata and restore class instances via `t.ls.hydrate()`
+6. Create instance using (in priority order):
+   - Native `t.ls.hydrate()` if available
+   - Hydrate function passed to `register()`
+   - Static `hydrate()` method on the class
    - Otherwise: `new Constructor()` + `Object.assign()`
-5. Preserve circular references via placeholder morphing
+7. Preserve circular references via placeholder morphing
+
+### Native V8 Types
+V8 serialization natively handles these types without transformation:
+- `Map`, `Set`, `Date`, `RegExp`
+- `TypedArray` (`Uint8Array`, `Float32Array`, etc.)
+- `BigInt`, `undefined`, `NaN`, `Infinity`
+- Circular references
 
 For detailed technical documentation, see [EXPLAIN.md](./EXPLAIN.md).
 

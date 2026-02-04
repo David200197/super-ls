@@ -1,19 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SuperLocalStorage } from "../index.js";
-
-// ============================================
-// MOCK for Titan Planet's t.ls API
-// ============================================
-const mockStorage = new Map();
-
-globalThis.t = {
-    ls: {
-        set(key, value) { mockStorage.set(key, value); },
-        get(key) { return mockStorage.get(key) || null; },
-        remove(key) { mockStorage.delete(key); },
-        clean() { mockStorage.clear(); }
-    }
-};
+import { clearAllMocks, mockStorage, mockObjectStorage } from './_mocks_.js';
 
 // ============================================
 // ADDITIONAL API TESTS
@@ -22,7 +9,7 @@ describe('SuperLocalStorage - Additional API Methods', () => {
     let superLs;
 
     beforeEach(() => {
-        mockStorage.clear();
+        clearAllMocks();
         superLs = new SuperLocalStorage();
     });
 
@@ -337,6 +324,325 @@ describe('SuperLocalStorage - Additional API Methods', () => {
             expect(zeroResult).toBe(0);
             expect(falseResult).toBe(false);
             expect(emptyResult).toBe('');
+        });
+    });
+
+    // ==========================================
+    // setTemp() / getTemp() METHODS (In-Memory)
+    // ==========================================
+    describe('setTemp() / getTemp() methods (in-memory storage)', () => {
+        it('should store and retrieve simple values', () => {
+            superLs.setTemp('tempKey', 'tempValue');
+            expect(superLs.getTemp('tempKey')).toBe('tempValue');
+        });
+
+        it('should store and retrieve objects', () => {
+            const obj = { name: 'Alice', score: 100 };
+            superLs.setTemp('tempObj', obj);
+            
+            const retrieved = superLs.getTemp('tempObj');
+            expect(retrieved).toEqual(obj);
+        });
+
+        it('should store and retrieve class instances without registration', () => {
+            class Player {
+                constructor(name) { this.name = name; }
+                greet() { return `Hello, ${this.name}`; }
+            }
+
+            const player = new Player('Bob');
+            superLs.setTemp('tempPlayer', player);
+            
+            const retrieved = superLs.getTemp('tempPlayer');
+            // In-memory storage preserves the exact reference
+            expect(retrieved).toBeInstanceOf(Player);
+            expect(retrieved.greet()).toBe('Hello, Bob');
+        });
+
+        it('should return undefined for non-existent key', () => {
+            expect(superLs.getTemp('nonexistent')).toBeUndefined();
+        });
+
+        it('should store Map and Set without serialization', () => {
+            const map = new Map([['a', 1], ['b', 2]]);
+            const set = new Set([1, 2, 3]);
+
+            superLs.setTemp('tempMap', map);
+            superLs.setTemp('tempSet', set);
+
+            expect(superLs.getTemp('tempMap')).toBeInstanceOf(Map);
+            expect(superLs.getTemp('tempMap').get('a')).toBe(1);
+            expect(superLs.getTemp('tempSet')).toBeInstanceOf(Set);
+            expect(superLs.getTemp('tempSet').has(2)).toBe(true);
+        });
+
+        it('should overwrite existing temp value', () => {
+            superLs.setTemp('key', 'value1');
+            superLs.setTemp('key', 'value2');
+            expect(superLs.getTemp('key')).toBe('value2');
+        });
+
+        it('should be independent from persistent storage', () => {
+            superLs.set('key', 'persistent');
+            superLs.setTemp('key', 'temporary');
+
+            expect(superLs.get('key')).toBe('persistent');
+            expect(superLs.getTemp('key')).toBe('temporary');
+        });
+
+        it('should store circular references without issues', () => {
+            const obj = { name: 'circular' };
+            obj.self = obj;
+
+            superLs.setTemp('circular', obj);
+            const retrieved = superLs.getTemp('circular');
+
+            expect(retrieved.self).toBe(retrieved);
+        });
+
+        it('should store functions (unlike persistent storage)', () => {
+            const fn = (x) => x * 2;
+            superLs.setTemp('func', fn);
+            
+            const retrieved = superLs.getTemp('func');
+            expect(typeof retrieved).toBe('function');
+            expect(retrieved(5)).toBe(10);
+        });
+    });
+
+    // ==========================================
+    // resolveTemp() METHOD
+    // ==========================================
+    describe('resolveTemp() method', () => {
+        it('should return existing temp value if key exists', () => {
+            superLs.setTemp('existing', { cached: true });
+
+            const result = superLs.resolveTemp('existing', () => ({ cached: false }));
+
+            expect(result.cached).toBe(true);
+        });
+
+        it('should call resolver and store result if key does not exist', () => {
+            let computed = false;
+            const result = superLs.resolveTemp('computed', () => {
+                computed = true;
+                return { value: 42 };
+            });
+
+            expect(computed).toBe(true);
+            expect(result.value).toBe(42);
+
+            // Verify it was stored
+            expect(superLs.getTemp('computed').value).toBe(42);
+        });
+
+        it('should not call resolver if key exists', () => {
+            superLs.setTemp('existing', 'original');
+
+            let resolverCalled = false;
+            const result = superLs.resolveTemp('existing', () => {
+                resolverCalled = true;
+                return 'new value';
+            });
+
+            expect(resolverCalled).toBe(false);
+            expect(result).toBe('original');
+        });
+
+        it('should work as memoization for expensive operations', () => {
+            let computeCount = 0;
+            const expensiveComputation = () => {
+                computeCount++;
+                return { result: Math.random() };
+            };
+
+            const result1 = superLs.resolveTemp('expensive', expensiveComputation);
+            const result2 = superLs.resolveTemp('expensive', expensiveComputation);
+            const result3 = superLs.resolveTemp('expensive', expensiveComputation);
+
+            expect(computeCount).toBe(1);
+            expect(result1).toBe(result2);
+            expect(result2).toBe(result3);
+        });
+
+        it('should handle undefined as non-existent (calls resolver)', () => {
+            // undefined means not stored, so resolver should be called
+            const result = superLs.resolveTemp('undef', () => 'resolved');
+            expect(result).toBe('resolved');
+        });
+
+        it('should work with class instances', () => {
+            class Cache {
+                constructor() { 
+                    this.data = new Map(); 
+                    this.created = Date.now();
+                }
+                set(k, v) { this.data.set(k, v); }
+                get(k) { return this.data.get(k); }
+            }
+
+            const cache = superLs.resolveTemp('cache', () => new Cache());
+            cache.set('key', 'value');
+
+            // Second call should return same instance
+            const sameCache = superLs.resolveTemp('cache', () => new Cache());
+            expect(sameCache.get('key')).toBe('value');
+            expect(sameCache.created).toBe(cache.created);
+        });
+    });
+
+    // ==========================================
+    // serialize() / deserialize() METHODS
+    // ==========================================
+    describe('serialize() / deserialize() methods', () => {
+        it('should serialize and deserialize simple values', () => {
+            const original = { name: 'Alice', age: 30 };
+            const bytes = superLs.serialize(original);
+            
+            expect(bytes).toBeInstanceOf(Uint8Array);
+            
+            const restored = superLs.deserialize(bytes);
+            expect(restored).toEqual(original);
+        });
+
+        it('should handle Map', () => {
+            const original = new Map([['a', 1], ['b', 2]]);
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored).toBeInstanceOf(Map);
+            expect(restored.get('a')).toBe(1);
+            expect(restored.get('b')).toBe(2);
+        });
+
+        it('should handle Set', () => {
+            const original = new Set([1, 2, 3]);
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored).toBeInstanceOf(Set);
+            expect(restored.has(1)).toBe(true);
+            expect(restored.has(2)).toBe(true);
+            expect(restored.has(3)).toBe(true);
+        });
+
+        it('should handle Date', () => {
+            const original = new Date('2024-01-15T10:30:00Z');
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored).toBeInstanceOf(Date);
+            expect(restored.toISOString()).toBe(original.toISOString());
+        });
+
+        it('should handle RegExp', () => {
+            const original = /test\d+/gi;
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored).toBeInstanceOf(RegExp);
+            expect(restored.source).toBe(original.source);
+            expect(restored.flags).toBe(original.flags);
+        });
+
+        it('should handle BigInt', () => {
+            const original = BigInt('9007199254740991000');
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored).toBe(original);
+        });
+
+        it('should handle TypedArray', () => {
+            const original = new Uint8Array([1, 2, 3, 4, 5]);
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored).toBeInstanceOf(Uint8Array);
+            expect(Array.from(restored)).toEqual([1, 2, 3, 4, 5]);
+        });
+
+        it('should handle circular references', () => {
+            const original = { name: 'circular' };
+            original.self = original;
+
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored.name).toBe('circular');
+            expect(restored.self).toBe(restored);
+        });
+
+        it('should handle registered class instances', () => {
+            class Player {
+                constructor(name = '', score = 0) {
+                    this.name = name;
+                    this.score = score;
+                }
+                greet() { return `I am ${this.name}`; }
+            }
+            superLs.register(Player);
+
+            const original = new Player('Alice', 100);
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored).toBeInstanceOf(Player);
+            expect(restored.name).toBe('Alice');
+            expect(restored.score).toBe(100);
+            expect(restored.greet()).toBe('I am Alice');
+        });
+
+        it('should handle complex nested structures', () => {
+            class Item {
+                constructor(name = '') { this.name = name; }
+            }
+            superLs.register(Item);
+
+            const original = {
+                items: [new Item('Sword'), new Item('Shield')],
+                metadata: new Map([['version', 1]]),
+                tags: new Set(['game', 'rpg']),
+                created: new Date()
+            };
+
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored.items[0]).toBeInstanceOf(Item);
+            expect(restored.items[0].name).toBe('Sword');
+            expect(restored.metadata).toBeInstanceOf(Map);
+            expect(restored.tags).toBeInstanceOf(Set);
+            expect(restored.created).toBeInstanceOf(Date);
+        });
+
+        it('should handle special values (NaN, Infinity, undefined)', () => {
+            const original = {
+                nan: NaN,
+                inf: Infinity,
+                negInf: -Infinity,
+                undef: undefined
+            };
+
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(Number.isNaN(restored.nan)).toBe(true);
+            expect(restored.inf).toBe(Infinity);
+            expect(restored.negInf).toBe(-Infinity);
+            expect(restored.undef).toBeUndefined();
+        });
+
+        it('should produce bytes usable for custom storage/transmission', () => {
+            const data = { message: 'Hello, World!' };
+            const bytes = superLs.serialize(data);
+
+            // Simulate transmission (convert to base64 and back)
+            const base64 = t.core.buffer.toBase64(bytes);
+            const receivedBytes = t.core.buffer.fromBase64(base64);
+
+            const restored = superLs.deserialize(receivedBytes);
+            expect(restored.message).toBe('Hello, World!');
         });
     });
 
@@ -672,6 +978,58 @@ describe('SuperLocalStorage - Additional API Methods', () => {
             expect(recovered.get('SKU001')).toBeInstanceOf(Product);
             expect(recovered.get('SKU001').getDisplayPrice()).toBe('$9.99');
             expect(recovered.get('SKU002').name).toBe('Gadget');
+        });
+    });
+
+    // ==========================================
+    // NATIVE INTEGRATION TESTS
+    // ==========================================
+    describe('Native integration (t.ls and t.core)', () => {
+        it('should use t.ls.serialize for serialization', () => {
+            const data = { test: 'value' };
+            superLs.set('native', data);
+
+            // Verify data is stored as base64 encoded V8 serialized bytes
+            const raw = mockStorage.get('__sls__native');
+            expect(typeof raw).toBe('string');
+            
+            // Should be valid base64
+            expect(() => t.core.buffer.fromBase64(raw)).not.toThrow();
+        });
+
+        it('should register classes with native t.ls.register', () => {
+            class NativeClass {
+                constructor(value = '') { this.value = value; }
+            }
+
+            superLs.register(NativeClass);
+
+            // Class should be usable through native hydration
+            const instance = new NativeClass('test');
+            superLs.set('native', instance);
+            const recovered = superLs.get('native');
+
+            expect(recovered).toBeInstanceOf(NativeClass);
+            expect(recovered.value).toBe('test');
+        });
+
+        it('should use t.core.buffer for encoding/decoding', () => {
+            const testData = 'Hello, World!';
+            const bytes = t.core.buffer.fromUtf8(testData);
+            const base64 = t.core.buffer.toBase64(bytes);
+            const decodedBytes = t.core.buffer.fromBase64(base64);
+            const result = t.core.buffer.toUtf8(decodedBytes);
+
+            expect(result).toBe(testData);
+        });
+
+        it('should use t.ls.setObject/getObject for temp storage', () => {
+            const obj = { temp: true };
+            superLs.setTemp('tempKey', obj);
+
+            // Verify it's in the object storage, not the string storage
+            expect(mockObjectStorage.has('__sls__tempKey')).toBe(true);
+            expect(mockStorage.has('__sls__tempKey')).toBe(false);
         });
     });
 });
