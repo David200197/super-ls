@@ -4,26 +4,26 @@ import "titanpl-superls";
 // Extension test harness for: titanpl-superls
 const ext = t["titanpl-superls"];
 
-console.log("---------------------------------------------------");
-console.log("Testing Extension: titanpl-superls");
-console.log("---------------------------------------------------");
+t.log("---------------------------------------------------");
+t.log("Testing Extension: titanpl-superls");
+t.log("---------------------------------------------------");
 
 if (!ext) {
-    console.log("ERROR: Extension 'titanpl-superls' not found in global 't'.");
+    t.log("ERROR: Extension 'titanpl-superls' not found in global 't'.");
 } else {
-    console.log("✓ Extension loaded successfully!");
-    console.log("✓ Available methods:", Object.keys(ext).join(", "));
+    t.log("✓ Extension loaded successfully!");
+    t.log("✓ Available methods:", Object.keys(ext).join(", "));
 }
 
-console.log("---------------------------------------------------");
-console.log("✓ Test complete!");
-console.log("\n📍 Routes:");
-console.log("  GET  http://localhost:3000/      → Test harness info");
-console.log("  GET  http://localhost:3000/test  → Extension test results (JSON)");
-console.log("---------------------------------------------------\n");
+t.log("---------------------------------------------------");
+t.log("✓ Test complete!");
+t.log("\n📍 Routes:");
+t.log("  GET  http://localhost:3000/      → Test harness info");
+t.log("  GET  http://localhost:3000/test  → Extension test results (JSON)");
+t.log("---------------------------------------------------\n");
 
 // Create routes
 t.get("/test").action("test");
 t.get("/").reply("🚀 Extension Test Harness for titanpl-superls\n\nVisit /test to see extension test results");
 
-await t.start(3000, "Titan Extension Test Running!");
+await t.start(4000, "Titan Extension Test Running!");
