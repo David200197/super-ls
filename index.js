@@ -1,9 +1,12 @@
-import { stringify, parse } from 'devalue';
+import { registerExtension } from "./utils/registerExtension.js";
+import { ls, core } from "@titanpl/core"
 
 /**
  * @fileoverview SuperLocalStorage - Enhanced localStorage wrapper for Titan Planet
  * that supports complex JavaScript types including Map, Set, Date, circular references,
  * and custom class instances with automatic serialization/deserialization.
+ * 
+ * Uses native V8 serialization via titan/core for maximum performance.
  * 
  * @author Titan Planet
  * @license MIT
@@ -14,7 +17,7 @@ import { stringify, parse } from 'devalue';
 // ============================================================================
 
 /** @constant {string} Default prefix for all storage keys */
-const DEFAULT_PREFIX = 'sls_';
+const DEFAULT_PREFIX = '__sls__';
 
 /** @constant {string} Metadata key for identifying serialized class type */
 const TYPE_MARKER = '__super_type__';
@@ -38,8 +41,14 @@ const DATA_MARKER = '__data__';
  */
 
 /**
- * @typedef {Object} HydratableClass
- * @property {function(Object): any} [hydrate] - Optional static method to create instance from data
+ * @typedef {function(Object): any} HydrateFunction
+ * A function that creates a class instance from serialized data
+ */
+
+/**
+ * @typedef {Object} RegistryEntry
+ * @property {ClassConstructor} Constructor - The class constructor
+ * @property {HydrateFunction|null} hydrate - Optional hydrate function
  */
 
 // ============================================================================
@@ -54,18 +63,12 @@ const DATA_MARKER = '__data__';
 const isPrimitive = (value) => value === null || typeof value !== 'object';
 
 /**
- * Checks if a value is a TypedArray (Uint8Array, Float32Array, etc.)
- * @param {any} value - Value to check
- * @returns {boolean} True if value is a TypedArray
- */
-const isTypedArray = (value) => ArrayBuffer.isView(value) && !(value instanceof DataView);
-
-/**
  * Checks if a serialized object contains class type metadata
  * @param {any} value - Value to check
  * @returns {boolean} True if value has type wrapper markers
  */
-const hasTypeWrapper = (value) => value[TYPE_MARKER] && value[DATA_MARKER] !== undefined;
+const hasTypeWrapper = (value) => 
+    value && typeof value === 'object' && value[TYPE_MARKER] && value[DATA_MARKER] !== undefined;
 
 // ============================================================================
 // Main Class
@@ -74,6 +77,8 @@ const hasTypeWrapper = (value) => value[TYPE_MARKER] && value[DATA_MARKER] !== u
 /**
  * Enhanced localStorage wrapper that supports complex JavaScript types
  * and custom class serialization/deserialization.
+ * 
+ * Now powered by native V8 serialization for maximum performance.
  * 
  * @class SuperLocalStorage
  * 
@@ -88,9 +93,9 @@ const hasTypeWrapper = (value) => value[TYPE_MARKER] && value[DATA_MARKER] !== u
  * t.log(recovered.get('theme')); // 'dark'
  * 
  * @example
- * // Usage with custom classes
+ * // Usage with custom classes and hydrate function
  * class Player {
- *     constructor(name = '', score = 0) {
+ *     constructor(name, score) {
  *         this.name = name;
  *         this.score = score;
  *     }
@@ -99,21 +104,26 @@ const hasTypeWrapper = (value) => value[TYPE_MARKER] && value[DATA_MARKER] !== u
  *     }
  * }
  * 
- * superLs.register(Player);
+ * superLs.register(Player, (data) => new Player(data.name, data.score));
  * superLs.set('player', new Player('Alice', 100));
  * 
  * const player = superLs.get('player');
  * player.addScore(50); // Methods work!
+ * 
+ * @example
+ * // Temporary in-memory storage (current V8 thread only)
+ * superLs.setTemp('cache', expensiveComputation());
+ * const cached = superLs.getTemp('cache'); // Fast retrieval, same thread
  */
 export class SuperLocalStorage {
     /**
      * Creates a new SuperLocalStorage instance
-     * @param {string} [prefix='sls_'] - Prefix for all storage keys
+     * @param {string} [prefix='__sls__'] - Prefix for all storage keys
      */
     constructor(prefix = DEFAULT_PREFIX) {
         /** 
-         * Registry mapping type names to class constructors
-         * @type {Map<string, ClassConstructor>}
+         * Registry mapping type names to class constructors and hydrate functions
+         * @type {Map<string, RegistryEntry>}
          * @private
          */
         this.registry = new Map();
@@ -127,67 +137,79 @@ export class SuperLocalStorage {
     }
 
     // ========================================================================
-    // Public API
+    // Public API - Core Storage
     // ========================================================================
 
     /**
      * Registers a class for serialization/deserialization support.
      * 
      * Once registered, instances of this class can be stored and retrieved
-     * with their methods intact.
+     * with their methods intact. Uses native ls.register() for optimal performance.
      * 
-     * @param {ClassConstructor & HydratableClass} ClassRef - The class constructor to register
-     * @param {string} [typeName=null] - Optional custom type name (defaults to class name)
+     * @param {ClassConstructor} ClassRef - The class constructor to register
+     * @param {HydrateFunction|string} [hydrateOrTypeName=null] - Hydrate function or custom type name
+     * @param {string} [typeName=null] - Custom type name when hydrate function is provided
      * @throws {Error} If ClassRef is not a function/class
      * 
      * @example
-     * // Basic registration
+     * // Basic registration (uses default constructor + Object.assign)
      * superLs.register(Player);
      * 
      * @example
-     * // Registration with custom name (useful for minified code or name collisions)
+     * // Registration with hydrate function
+     * superLs.register(Player, (data) => new Player(data.name, data.score));
+     * 
+     * @example
+     * // Registration with hydrate function and custom type name
+     * superLs.register(Player, (data) => new Player(data.name, data.score), 'GamePlayer');
+     * 
+     * @example
+     * // Registration with only custom type name
      * superLs.register(Player, 'GamePlayer');
-     * 
-     * @example
-     * // Class with static hydrate method for complex constructors
-     * class Player {
-     *     constructor(name, score) {
-     *         if (!name) throw new Error('Name required');
-     *         this.name = name;
-     *         this.score = score;
-     *     }
-     *     static hydrate(data) {
-     *         return new Player(data.name, data.score);
-     *     }
-     * }
-     * superLs.register(Player);
      */
-    register(ClassRef, typeName = null) {
+    register(ClassRef, hydrateOrTypeName = null, typeName = null) {
         if (typeof ClassRef !== 'function') {
             throw new Error('Invalid class: expected a constructor function');
         }
 
-        const finalName = typeName || ClassRef.name;
-        this.registry.set(finalName, ClassRef);
+        let hydrate = null;
+        let finalTypeName = null;
+
+        if (typeof hydrateOrTypeName === 'function') {
+            hydrate = hydrateOrTypeName;
+            finalTypeName = typeName || ClassRef.name;
+        } else if (typeof hydrateOrTypeName === 'string') {
+            finalTypeName = hydrateOrTypeName;
+        } else {
+            finalTypeName = ClassRef.name;
+        }
+
+        // Store locally for class detection during serialization
+        this.registry.set(finalTypeName, {
+            Constructor: ClassRef,
+            hydrate
+        });
+
+        // Delegate to native ls.register() for hydration support
+        ls.register(ClassRef, hydrate, finalTypeName);
     }
 
     /**
      * Stores a value in localStorage with full type preservation.
      * 
+     * Uses native V8 serialization for optimal performance.
      * Supports: primitives, objects, arrays, Map, Set, Date, RegExp,
      * TypedArrays, BigInt, circular references, undefined, NaN, Infinity,
      * and registered class instances.
      * 
      * @param {string} key - Storage key
      * @param {any} value - Value to store
-     * @throws {Error} If value contains non-serializable types (functions, WeakMap, WeakSet)
      * 
      * @example
      * // Store various types
      * superLs.set('map', new Map([['key', 'value']]));
      * superLs.set('set', new Set([1, 2, 3]));
      * superLs.set('date', new Date());
-     * superLs.set('regex', /pattern/gi);
      * superLs.set('bigint', BigInt('9007199254740991000'));
      * 
      * @example
@@ -198,8 +220,9 @@ export class SuperLocalStorage {
      */
     set(key, value) {
         const payload = this._toSerializable(value);
-        const serialized = stringify(payload);
-        t.ls.set(this.prefix + key, serialized);
+        const bytes = ls.serialize(payload);
+        const base64 = core.buffer.toBase64(bytes);
+        ls.set(this.prefix + key, base64);
     }
 
     /**
@@ -208,8 +231,9 @@ export class SuperLocalStorage {
      * All types are automatically restored to their original form,
      * including registered class instances with working methods.
      * 
+     * @template T
      * @param {string} key - Storage key
-     * @returns {any} The stored value with types restored, or null if key doesn't exist
+     * @returns {T|null} The stored value with types restored, or null if key doesn't exist
      * 
      * @example
      * const settings = superLs.get('user_settings');
@@ -218,13 +242,205 @@ export class SuperLocalStorage {
      * }
      */
     get(key) {
-        const raw = t.ls.get(this.prefix + key);
+        const raw = ls.get(this.prefix + key);
 
         if (!raw) {
             return null;
         }
 
-        const parsed = parse(raw);
+        const bytes = core.buffer.fromBase64(raw);
+        const parsed = ls.deserialize(bytes);
+        return this._rehydrate(parsed, new WeakMap());
+    }
+
+    /**
+     * Removes a value from localStorage.
+     * 
+     * @param {string} key - Storage key to remove
+     * @returns {void}
+     * 
+     * @example
+     * superLs.set('temp_data', { foo: 'bar' });
+     * superLs.remove('temp_data');
+     * superLs.get('temp_data'); // null
+     */
+    remove(key) {
+        ls.remove(this.prefix + key);
+    }
+
+    /**
+     * Clears all values from localStorage.
+     * 
+     * @returns {void}
+     * 
+     * @example
+     * superLs.set('key1', 'value1');
+     * superLs.set('key2', 'value2');
+     * superLs.clean();
+     * // All keys are now removed
+     */
+    clean() {
+        ls.clear();
+    }
+
+    /**
+     * Checks if a key exists in localStorage and contains a valid value.
+     * 
+     * @param {string} key - Storage key to check
+     * @returns {boolean} True if the key exists and contains a non-null, non-undefined value
+     * 
+     * @example
+     * superLs.set('user', { name: 'Alice' });
+     * superLs.has('user'); // true
+     * superLs.has('nonexistent'); // false
+     */
+    has(key) {
+        const value = this.get(key);
+        return this._checkIfExistValue(value);
+    }
+
+    /**
+     * Retrieves a value from localStorage, or computes and stores it if not present.
+     * 
+     * This method implements a "get or create" pattern: if the key exists and contains
+     * a valid value, it returns that value. Otherwise, it calls the resolver function,
+     * stores the result, and returns it.
+     * 
+     * @template T
+     * @param {string} key - Storage key
+     * @param {function(): T} resolver - Function that computes the default value if key doesn't exist
+     * @returns {T} The existing value or the newly resolved and stored value
+     * 
+     * @example
+     * // Returns existing settings or creates default ones
+     * const settings = superLs.resolve('app_settings', () => ({
+     *     theme: 'dark',
+     *     language: 'en',
+     *     notifications: true
+     * }));
+     */
+    resolve(key, resolver) {
+        const value = this.get(key);
+        
+        if (this._checkIfExistValue(value)) {
+            return value;
+        }
+        
+        const resolvedValue = resolver();
+        this.set(key, resolvedValue);
+        return resolvedValue;
+    }
+
+    // ========================================================================
+    // Public API - Temporary Storage (In-Memory, Current Thread Only)
+    // ========================================================================
+
+    /**
+     * Stores a value in temporary memory storage (current V8 thread only).
+     * 
+     * This is useful for caching expensive computations within a single request/action.
+     * Data does NOT persist across different requests or threads.
+     * 
+     * Uses native V8 serialization for complex objects.
+     * 
+     * @param {string} key - Storage key
+     * @param {any} value - Value to store
+     * 
+     * @example
+     * // Cache expensive computation for reuse in same request
+     * superLs.setTemp('computed_data', heavyComputation());
+     * 
+     * // Later in the same request...
+     * const data = superLs.getTemp('computed_data'); // Fast retrieval
+     */
+    setTemp(key, value) {
+        ls.setObject(this.prefix + key, value);
+    }
+
+    /**
+     * Retrieves a value from temporary memory storage (current V8 thread only).
+     * 
+     * Returns the value if it exists in the current thread's memory,
+     * or undefined if not found.
+     * 
+     * @template T
+     * @param {string} key - Storage key
+     * @returns {T|undefined} The stored value or undefined
+     * 
+     * @example
+     * const cached = superLs.getTemp('computed_data');
+     * if (cached) {
+     *     // Use cached value
+     * }
+     */
+    getTemp(key) {
+        return ls.getObject(this.prefix + key);
+    }
+
+    /**
+     * Checks if a key exists in temporary storage and retrieves it, 
+     * or computes and stores it if not present.
+     * 
+     * Similar to resolve() but for temporary in-memory storage.
+     * 
+     * @template T
+     * @param {string} key - Storage key
+     * @param {function(): T} resolver - Function that computes the value if not cached
+     * @returns {T} The cached or newly computed value
+     * 
+     * @example
+     * // Memoize expensive operation within current request
+     * const result = superLs.resolveTemp('expensive_calc', () => {
+     *     return performExpensiveCalculation();
+     * });
+     */
+    resolveTemp(key, resolver) {
+        const value = this.getTemp(key);
+        
+        if (value !== undefined) {
+            return value;
+        }
+        
+        const resolvedValue = resolver();
+        this.setTemp(key, resolvedValue);
+        return resolvedValue;
+    }
+
+    // ========================================================================
+    // Public API - Direct Serialization Utilities
+    // ========================================================================
+
+    /**
+     * Serializes any JavaScript value to a Uint8Array using native V8 serialization.
+     * 
+     * Useful when you need the raw bytes for custom storage or transmission.
+     * 
+     * @param {any} value - Value to serialize
+     * @returns {Uint8Array} Serialized bytes
+     * 
+     * @example
+     * const bytes = superLs.serialize({ complex: new Map([['a', 1]]) });
+     * // Send bytes over network, store in custom location, etc.
+     */
+    serialize(value) {
+        const payload = this._toSerializable(value);
+        return ls.serialize(payload);
+    }
+
+    /**
+     * Deserializes a Uint8Array back to the original JavaScript value.
+     * 
+     * Automatically rehydrates registered class instances.
+     * 
+     * @template T
+     * @param {Uint8Array} bytes - Serialized bytes
+     * @returns {T} Deserialized and rehydrated value
+     * 
+     * @example
+     * const value = superLs.deserialize(bytes);
+     */
+    deserialize(bytes) {
+        const parsed = ls.deserialize(bytes);
         return this._rehydrate(parsed, new WeakMap());
     }
 
@@ -235,8 +451,8 @@ export class SuperLocalStorage {
     /**
      * Recursively converts values to a serializable format.
      * 
-     * Registered class instances are wrapped with type metadata.
-     * Circular references are preserved using a WeakMap tracker.
+     * V8 natively handles Map, Set, Date, TypedArray, circular references.
+     * Only registered class instances need special wrapping with metadata.
      * 
      * @param {any} value - Value to convert
      * @param {WeakMap} [seen=new WeakMap()] - Tracks processed objects for circular reference handling
@@ -252,18 +468,18 @@ export class SuperLocalStorage {
             return seen.get(value);
         }
 
-        // Check registered classes first (before native types)
+        // Check registered classes first - wrap with metadata
         const classWrapper = this._tryWrapRegisteredClass(value, seen);
         if (classWrapper) {
             return classWrapper;
         }
 
-        // Handle native types that devalue supports
-        if (this._isNativelySerializable(value)) {
+        // V8 serialize handles these natively - no transformation needed
+        if (this._isV8Native(value)) {
             return value;
         }
 
-        // Handle collections and objects
+        // Handle collections that may contain registered classes
         return this._serializeCollection(value, seen);
     }
 
@@ -275,8 +491,8 @@ export class SuperLocalStorage {
      * @private
      */
     _tryWrapRegisteredClass(value, seen) {
-        for (const [name, Constructor] of this.registry.entries()) {
-            if (value instanceof Constructor) {
+        for (const [name, entry] of this.registry.entries()) {
+            if (value instanceof entry.Constructor) {
                 const wrapper = {
                     [TYPE_MARKER]: name,
                     [DATA_MARKER]: {}
@@ -295,19 +511,21 @@ export class SuperLocalStorage {
     }
 
     /**
-     * Checks if a value is natively serializable by devalue
+     * Checks if V8 serialization handles this type natively
      * @param {any} value - Value to check
-     * @returns {boolean} True if devalue handles this type natively
+     * @returns {boolean} True if V8 handles this type without transformation
      * @private
      */
-    _isNativelySerializable(value) {
+    _isV8Native(value) {
         return value instanceof Date ||
             value instanceof RegExp ||
-            isTypedArray(value);
+            value instanceof Map ||
+            value instanceof Set ||
+            ArrayBuffer.isView(value);
     }
 
     /**
-     * Serializes collections (Array, Map, Set, Object)
+     * Serializes collections that may contain registered class instances
      * @param {any} value - Collection to serialize
      * @param {WeakMap} seen - Circular reference tracker
      * @returns {any} Serialized collection
@@ -330,7 +548,7 @@ export class SuperLocalStorage {
     }
 
     /**
-     * Serializes an array, preserving sparse array holes
+     * Serializes an array, processing each element for registered classes
      * @param {Array} value - Array to serialize
      * @param {WeakMap} seen - Circular reference tracker
      * @returns {Array} Serialized array
@@ -354,7 +572,7 @@ export class SuperLocalStorage {
     }
 
     /**
-     * Serializes a Map, processing both keys and values
+     * Serializes a Map, processing values for registered classes
      * @param {Map} value - Map to serialize
      * @param {WeakMap} seen - Circular reference tracker
      * @returns {Map} Serialized Map
@@ -375,7 +593,7 @@ export class SuperLocalStorage {
     }
 
     /**
-     * Serializes a Set
+     * Serializes a Set, processing values for registered classes
      * @param {Set} value - Set to serialize
      * @param {WeakMap} seen - Circular reference tracker
      * @returns {Set} Serialized Set
@@ -393,7 +611,7 @@ export class SuperLocalStorage {
     }
 
     /**
-     * Serializes a plain object or unregistered class instance
+     * Serializes a plain object, processing properties for registered classes
      * @param {Object} value - Object to serialize
      * @param {WeakMap} seen - Circular reference tracker
      * @returns {Object} Serialized object
@@ -417,8 +635,8 @@ export class SuperLocalStorage {
     /**
      * Recursively rehydrates serialized data back to original types.
      * 
-     * Objects with type metadata are restored to class instances.
-     * Circular references are preserved using a WeakMap tracker.
+     * Uses native ls.hydrate() for registered class instances.
+     * V8 deserialize already restores Map, Set, Date, etc.
      * 
      * @param {any} value - Value to rehydrate
      * @param {WeakMap} seen - Tracks processed objects for circular reference handling
@@ -439,26 +657,28 @@ export class SuperLocalStorage {
             return this._rehydrateClass(value, seen);
         }
 
-        // Handle native types
+        // V8 deserialize already restores these types
         if (value instanceof Date || value instanceof RegExp) {
             return value;
         }
 
-        // Handle collections
+        // Handle collections that may contain wrapped classes
         return this._rehydrateCollection(value, seen);
     }
 
     /**
-     * Rehydrates a wrapped class instance back to its original class
+     * Rehydrates a wrapped class instance using native ls.hydrate()
      * @param {SerializedClassWrapper} value - Wrapped class data
      * @param {WeakMap} seen - Circular reference tracker
-     * @returns {any} Restored class instance or original value if class not registered
+     * @returns {any} Restored class instance
      * @private
      */
     _rehydrateClass(value, seen) {
-        const Constructor = this.registry.get(value[TYPE_MARKER]);
+        const typeName = value[TYPE_MARKER];
+        const entry = this.registry.get(typeName);
 
-        if (!Constructor) {
+        if (!entry) {
+            // Class not registered - return as plain object
             return this._rehydrateObject(value, seen);
         }
 
@@ -472,28 +692,52 @@ export class SuperLocalStorage {
             hydratedData[key] = this._rehydrate(value[DATA_MARKER][key], seen);
         }
 
-        // Create instance using hydrate() or default constructor
-        const instance = this._createInstance(Constructor, hydratedData);
+        // Use native ls.hydrate() if available, otherwise fallback to local logic
+        let instance;
+        try {
+            instance = ls.hydrate(typeName, hydratedData);
+        } catch {
+            // Fallback to local hydration logic
+            instance = this._createInstance(entry, hydratedData);
+        }
 
         // Update placeholder to become the actual instance
         Object.assign(placeholder, instance);
         Object.setPrototypeOf(placeholder, Object.getPrototypeOf(instance));
 
+        // Preserve object state (frozen/sealed/non-extensible)
+        if (Object.isFrozen(instance)) {
+            Object.freeze(placeholder);
+        } else if (Object.isSealed(instance)) {
+            Object.seal(placeholder);
+        } else if (!Object.isExtensible(instance)) {
+            Object.preventExtensions(placeholder);
+        }
+
         return placeholder;
     }
 
     /**
-     * Creates a class instance from hydrated data
-     * @param {ClassConstructor & HydratableClass} Constructor - Class constructor
+     * Creates a class instance from hydrated data (fallback)
+     * @param {RegistryEntry} entry - Registry entry with Constructor and optional hydrate function
      * @param {Object} data - Hydrated property data
      * @returns {any} New class instance
      * @private
      */
-    _createInstance(Constructor, data) {
+    _createInstance(entry, data) {
+        const { Constructor, hydrate } = entry;
+
+        // Priority 1: Use hydrate function from register()
+        if (typeof hydrate === 'function') {
+            return hydrate(data);
+        }
+
+        // Priority 2: Static hydrate method on class
         if (typeof Constructor.hydrate === 'function') {
             return Constructor.hydrate(data);
         }
 
+        // Priority 3: Default constructor + Object.assign
         const instance = new Constructor();
         Object.assign(instance, data);
         return instance;
@@ -545,7 +789,7 @@ export class SuperLocalStorage {
     }
 
     /**
-     * Rehydrates a Map, processing both keys and values
+     * Rehydrates a Map
      * @param {Map} value - Map to rehydrate
      * @param {WeakMap} seen - Circular reference tracker
      * @returns {Map} Rehydrated Map
@@ -600,6 +844,16 @@ export class SuperLocalStorage {
 
         return obj;
     }
+
+    /**
+     * Checks if a value exists (is not null or undefined)
+     * @param {any} value - Value to check
+     * @returns {boolean} True if value is not null and not undefined
+     * @private
+     */
+    _checkIfExistValue(value) {
+        return value !== undefined && value !== null;
+    }
 }
 
 // ============================================================================
@@ -613,12 +867,6 @@ export class SuperLocalStorage {
 const superLs = new SuperLocalStorage();
 
 // Titan Planet Extension Registration
-if (typeof t !== 'undefined') {
-    try {
-        t["titanpl-superls"] = superLs;
-    } catch (e) {
-        t.log("[titanpl-superls] Failed to register extension:", e);
-    }
-}
+registerExtension("titanpl-superls", superLs);
 
 export default superLs;

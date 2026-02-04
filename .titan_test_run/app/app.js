@@ -1,5 +1,10 @@
 import t from "../titan/titan.js";
-import "titanpl-superls";
+
+// 1. Expose 't' globally because extensions expect it (like in the real runtime)
+globalThis.t = t;
+
+// 2. Dynamic import ensures 't' is set BEFORE the extension loads
+await import("titanpl-superls");
 
 // Extension test harness for: titanpl-superls
 const ext = t["titanpl-superls"];

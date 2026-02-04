@@ -2,27 +2,31 @@
 
 > A supercharged storage adapter for Titan Planet that enables storing complex objects, circular references, and Class instances with automatic rehydration.
 
-`super-ls` extends the capabilities of the native `t.ls` API by using `devalue` for serialization. While standard `t.ls` is limited to simple JSON data, `super-ls` allows you to save and retrieve rich data structures effortlessly.
+`super-ls` extends the capabilities of the native `t.ls` API by leveraging **native V8 serialization** via `@titanpl/core`. While standard `t.ls` is limited to simple string data, `super-ls` allows you to save and retrieve rich data structures effortlessly with **maximum performance**.
 
 ---
 
 ## ✨ Features
 
+- **Native V8 Serialization**: Uses Rust-powered `t.ls.serialize/deserialize` for maximum performance
 - **Rich Data Types**: Store `Map`, `Set`, `Date`, `RegExp`, `BigInt`, `TypedArray`, `undefined`, `NaN`, `Infinity`, and circular references
 - **Class Hydration**: Register your custom classes and retrieve fully functional instances with methods intact
+- **Flexible Hydration**: Pass a hydrate function directly to `register()` for complete control over instance reconstruction
 - **Dependency Injection Support**: Serialize/deserialize nested class instances and complex object graphs
 - **Circular Reference Handling**: Automatic detection and preservation of circular references
+- **Lazy Initialization**: Use `resolve()` for "get or create" patterns
+- **In-Memory Cache**: Use `setTemp()`/`getTemp()` for fast thread-local caching
+- **Direct Serialization Access**: Use `serialize()`/`deserialize()` for custom storage needs
 - **Drop-in Library**: Works via standard ES module `import` without polluting the global `t` namespace
-- **Titan Native Integration**: Built on top of `@titanpl/core`'s `t.ls` for persistence
+- **Titan Native Integration**: Built on top of `@titanpl/core`'s native Rust bindings
 
 ---
 
 ## 📦 Installation
 
 Add `super-ls` to your Titan Planet project:
-
 ```bash
-npm install titanpl-superls
+npm install @t8n/super-ls
 ```
 
 ---
@@ -32,9 +36,8 @@ npm install titanpl-superls
 ### Basic Usage (Rich Data Types)
 
 Store objects that standard JSON cannot handle:
-
 ```javascript
-import superLs from "titanpl-superls";
+import superLs from "@t8n/super-ls";
 
 // Maps
 const settings = new Map([
@@ -59,6 +62,16 @@ superLs.set("emailPattern", /^[\w-]+@[\w-]+\.\w+$/i);
 // BigInt
 superLs.set("bigNumber", BigInt("9007199254740991000"));
 
+// Remove a specific key
+superLs.remove("lastLogin");
+
+// Check if a key exists and has a valid value
+superLs.has("lastLogin"); // false
+superLs.has("user_settings"); // true
+
+// Clear all storage
+superLs.clean();
+
 // Circular References
 const obj = { name: "circular" };
 obj.self = obj;
@@ -68,14 +81,75 @@ const restored = superLs.get("circular");
 t.log(restored.self === restored); // true
 ```
 
+### Lazy Initialization with `resolve()`
+
+The `resolve()` method implements a "get or create" pattern - perfect for lazy initialization:
+```javascript
+import superLs from "@t8n/super-ls";
+
+// Returns existing settings or creates default ones
+const settings = superLs.resolve("app_settings", () => ({
+    theme: "dark",
+    language: "en",
+    notifications: true
+}));
+
+// Perfect for caches and complex data structures
+const userCache = superLs.resolve("user_cache", () => new Map());
+
+// Works great with class instances too
+superLs.register(Player);
+const player = superLs.resolve("current_player", () => new Player("Guest", 0));
+```
+
+### In-Memory Cache with `setTemp()` / `getTemp()`
+
+For data that only needs to persist within the current request/action (same V8 thread):
+```javascript
+import superLs from "@t8n/super-ls";
+
+// Cache expensive computation for reuse in same request
+superLs.setTemp("computed_data", heavyComputation());
+
+// Later in the same request...
+const data = superLs.getTemp("computed_data"); // Fast retrieval, no disk I/O
+
+// Use resolveTemp() for "get or compute" pattern
+const result = superLs.resolveTemp("expensive_calc", () => {
+    return performExpensiveCalculation();
+});
+```
+
+> ⚠️ **Note**: `setTemp`/`getTemp` data does NOT persist across different requests or threads. Use regular `set`/`get` for persistent storage.
+
+### Direct Serialization Access
+
+For custom storage or network transmission needs:
+```javascript
+import superLs from "@t8n/super-ls";
+
+// Serialize to Uint8Array (uses native V8 serialization)
+const bytes = superLs.serialize({ 
+    complex: new Map([['a', 1]]),
+    date: new Date(),
+    set: new Set([1, 2, 3])
+});
+
+// Send bytes over network, store in custom location, etc.
+await sendToServer(bytes);
+
+// Deserialize back to original types
+const value = superLs.deserialize(bytes);
+t.log(value.complex instanceof Map); // true
+```
+
 ### Class Hydration
 
 The true power of `super-ls` lies in its ability to restore class instances with their methods intact.
 
 #### 1. Define and Register Your Class
-
 ```javascript
-import superLs from "titanpl-superls";
+import superLs from "@t8n/super-ls";
 
 class Player {
     constructor(name = "", score = 0) {
@@ -97,7 +171,6 @@ superLs.register(Player);
 ```
 
 #### 2. Save and Restore
-
 ```javascript
 const player = new Player("Alice", 100);
 superLs.set("player_1", player);
@@ -109,14 +182,13 @@ t.log(restored.name);              // "Alice"
 t.log(restored.greet());           // "Hello, I am Alice!"
 t.log(restored instanceof Player); // true
 
-restored.addScore(50);                   // Methods work!
+restored.addScore(50);             // Methods work!
 t.log(restored.score);             // 150
 ```
 
 ### Dependency Injection Pattern
 
 `super-ls` supports nested class instances, making it perfect for DI patterns:
-
 ```javascript
 class Weapon {
     constructor(name = "", damage = 0) {
@@ -160,8 +232,7 @@ t.log(restored.fight());                   // "Arthur: Excalibur deals 50 damage
 
 ### Custom Hydration (Complex Constructors)
 
-For classes with required constructor arguments or complex initialization:
-
+For classes with required constructor arguments or complex initialization, pass a hydrate function as the second argument to `register()`:
 ```javascript
 class ImmutableUser {
     constructor(id, email) {
@@ -170,40 +241,39 @@ class ImmutableUser {
         this.email = email;
         Object.freeze(this);
     }
-
-    // Static hydrate method for custom reconstruction
-    static hydrate(data) {
-        return new ImmutableUser(data.id, data.email);
-    }
 }
 
-superLs.register(ImmutableUser);
+// Pass hydrate function as second argument
+superLs.register(ImmutableUser, (data) => new ImmutableUser(data.id, data.email));
 
 const user = new ImmutableUser(1, "alice@example.com");
 superLs.set("user", user);
 
-const restored = superLs.get("user"); // Works! Uses hydrate() internally
+const restored = superLs.get("user"); // Works! Uses hydrate function internally
 ```
 
 ### Custom Type Names
 
 Useful for minified code or avoiding name collisions:
-
 ```javascript
 // Two modules both export "User" class
 import { User as AdminUser } from "./admin";
 import { User as CustomerUser } from "./customer";
 
+// Without hydrate function - just type name
 superLs.register(AdminUser, "AdminUser");
 superLs.register(CustomerUser, "CustomerUser");
+
+// With hydrate function and custom type name
+superLs.register(AdminUser, (data) => new AdminUser(data.id), "AdminUser");
+superLs.register(CustomerUser, (data) => new CustomerUser(data.id), "CustomerUser");
 ```
 
 ### Multiple Storage Instances
 
 For isolated registries or different prefixes:
-
 ```javascript
-import { SuperLocalStorage } from "titanpl-superls";
+import { SuperLocalStorage } from "@t8n/super-ls";
 
 const gameStorage = new SuperLocalStorage("game_");
 const userStorage = new SuperLocalStorage("user_");
@@ -212,7 +282,7 @@ gameStorage.register(Player);
 userStorage.register(Profile);
 
 // Keys are prefixed automatically
-gameStorage.set("hero", player);   // Stored as "game_hero"
+gameStorage.set("hero", player);     // Stored as "game_hero"
 userStorage.set("current", profile); // Stored as "user_current"
 ```
 
@@ -220,9 +290,11 @@ userStorage.set("current", profile); // Stored as "user_current"
 
 ## 📚 API Reference
 
-### `superLs.set(key, value)`
+### Core Storage Methods
 
-Stores any JavaScript value in Titan storage.
+#### `superLs.set(key, value)`
+
+Stores any JavaScript value in Titan storage using native V8 serialization.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -230,12 +302,11 @@ Stores any JavaScript value in Titan storage.
 | `value` | `any` | Data to store |
 
 **Supported types**: primitives, objects, arrays, `Map`, `Set`, `Date`, `RegExp`, `BigInt`, `TypedArray`, `undefined`, `NaN`, `Infinity`, circular references, registered class instances.
-
 ```javascript
 superLs.set("config", { theme: "dark", items: new Set([1, 2, 3]) });
 ```
 
-### `superLs.get(key)`
+#### `superLs.get(key)`
 
 Retrieves and deserializes a value with full type restoration.
 
@@ -243,7 +314,6 @@ Retrieves and deserializes a value with full type restoration.
 |-----------|------|-------------|
 | `key` | `string` | Storage key |
 | **Returns** | `any \| null` | Restored value or `null` if not found |
-
 ```javascript
 const config = superLs.get("config");
 if (config) {
@@ -251,46 +321,211 @@ if (config) {
 }
 ```
 
-### `superLs.register(ClassRef, typeName?)`
+#### `superLs.remove(key)`
 
-Registers a class for automatic serialization/deserialization.
+Removes a value from storage.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key to remove |
+```javascript
+superLs.set("temp_data", { foo: "bar" });
+superLs.remove("temp_data");
+superLs.get("temp_data"); // null
+```
+
+#### `superLs.has(key)`
+
+Checks if a key exists in storage and contains a valid value.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key to check |
+| **Returns** | `boolean` | `true` if key exists and contains a non-null, non-undefined value |
+```javascript
+superLs.set("user", { name: "Alice" });
+superLs.has("user"); // true
+
+superLs.set("count", 42);
+superLs.has("count"); // true
+
+superLs.set("active", false);
+superLs.has("active"); // true
+
+superLs.has("nonexistent"); // false
+```
+
+#### `superLs.clean()`
+
+Clears all values from storage.
+```javascript
+superLs.set("key1", "value1");
+superLs.set("key2", "value2");
+superLs.clean();
+// All keys are now removed
+```
+
+#### `superLs.resolve(key, resolver)`
+
+Retrieves a value from storage, or computes and stores it if not present. Implements a "get or create" pattern for lazy initialization.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key |
+| `resolver` | `function` | Function that computes the default value if key doesn't exist |
+| **Returns** | `any` | The existing value or the newly resolved and stored value |
+```javascript
+// Returns existing settings or creates default ones
+const settings = superLs.resolve("app_settings", () => ({
+    theme: "dark",
+    language: "en",
+    notifications: true
+}));
+
+// Useful for lazy initialization of complex data structures
+const cache = superLs.resolve("user_cache", () => new Map());
+
+// Works with registered classes
+superLs.register(Player);
+const player = superLs.resolve("player", () => new Player("Guest", 0));
+```
+
+---
+
+### Temporary Storage Methods (In-Memory, Current Thread Only)
+
+#### `superLs.setTemp(key, value)`
+
+Stores a value in temporary memory storage (current V8 thread only).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key |
+| `value` | `any` | Data to store |
+
+> ⚠️ Data does NOT persist across different requests or threads.
+
+```javascript
+// Cache expensive computation for reuse in same request
+superLs.setTemp("computed_data", heavyComputation());
+```
+
+#### `superLs.getTemp(key)`
+
+Retrieves a value from temporary memory storage.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key |
+| **Returns** | `any \| undefined` | Stored value or `undefined` if not found |
+```javascript
+const cached = superLs.getTemp("computed_data");
+if (cached) {
+    // Use cached value
+}
+```
+
+#### `superLs.resolveTemp(key, resolver)`
+
+Retrieves a value from temporary storage, or computes and stores it if not present.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Storage key |
+| `resolver` | `function` | Function that computes the value if not cached |
+| **Returns** | `any` | The cached or newly computed value |
+```javascript
+// Memoize expensive operation within current request
+const result = superLs.resolveTemp("expensive_calc", () => {
+    return performExpensiveCalculation();
+});
+```
+
+---
+
+### Serialization Utilities
+
+#### `superLs.serialize(value)`
+
+Serializes any JavaScript value to a `Uint8Array` using native V8 serialization.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `value` | `any` | Value to serialize |
+| **Returns** | `Uint8Array` | Serialized bytes |
+```javascript
+const bytes = superLs.serialize({ complex: new Map([['a', 1]]) });
+// Send bytes over network, store in custom location, etc.
+```
+
+#### `superLs.deserialize(bytes)`
+
+Deserializes a `Uint8Array` back to the original JavaScript value.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `bytes` | `Uint8Array` | Serialized bytes |
+| **Returns** | `any` | Deserialized and rehydrated value |
+```javascript
+const value = superLs.deserialize(bytes);
+```
+
+---
+
+### Class Registration
+
+#### `superLs.register(ClassRef, hydrateOrTypeName?, typeName?)`
+
+Registers a class for automatic serialization/deserialization. Delegates to native `t.ls.register()` for optimal performance.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `ClassRef` | `Function` | Class constructor |
-| `typeName` | `string?` | Custom type name (defaults to `ClassRef.name`) |
+| `hydrateOrTypeName` | `function \| string?` | Hydrate function or custom type name |
+| `typeName` | `string?` | Custom type name (when hydrate function is provided) |
 
+**Overloads:**
 ```javascript
+// Basic registration (uses default constructor + Object.assign)
 superLs.register(Player);
-superLs.register(Enemy, "GameEnemy"); // Custom name
+
+// With hydrate function
+superLs.register(Player, (data) => new Player(data.name, data.score));
+
+// With hydrate function and custom type name
+superLs.register(Player, (data) => new Player(data.name, data.score), "GamePlayer");
+
+// With only custom type name (backward compatible)
+superLs.register(Player, "GamePlayer");
 ```
 
-### `new SuperLocalStorage(prefix?)`
+---
+
+### Instance Creation
+
+#### `new SuperLocalStorage(prefix?)`
 
 Creates a new storage instance with isolated registry.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `prefix` | `string` | `"sls_"` | Key prefix for all operations |
-
+| `prefix` | `string` | `"__sls__"` | Key prefix for all operations |
 ```javascript
-import { SuperLocalStorage } from "titanpl-superls";
+import { SuperLocalStorage } from "@t8n/super-ls";
 const custom = new SuperLocalStorage("myapp_");
 ```
 
 ---
 
-## 🎯 When to Use Static `hydrate()` Method
+## 🎯 When to Use the Hydrate Function
 
 By default, `super-ls` reconstructs class instances like this:
-
 ```javascript
 const instance = new Constructor();  // Calls constructor WITHOUT arguments
 Object.assign(instance, data);       // Copies properties
 ```
 
 This works **only if** your constructor can be called without arguments:
-
 ```javascript
 // ✅ WORKS - has default values
 class Player {
@@ -302,7 +537,6 @@ class Player {
 ```
 
 But **fails** if constructor requires arguments:
-
 ```javascript
 // ❌ FAILS - required arguments
 class Player {
@@ -318,8 +552,7 @@ class Player {
 
 ### The Solution
 
-Define a static `hydrate()` method that tells `super-ls` how to reconstruct your class:
-
+Pass a hydrate function as the second argument to `register()`:
 ```javascript
 class Player {
     constructor(name, score) {
@@ -327,17 +560,16 @@ class Player {
         this.name = name;
         this.score = score;
     }
-
-    static hydrate(data) {
-        return new Player(data.name, data.score);
-    }
 }
+
+// Hydrate function tells super-ls how to reconstruct the class
+superLs.register(Player, (data) => new Player(data.name, data.score));
 ```
 
 ### Quick Reference
 
-| Constructor Style | Needs `hydrate()`? | Example |
-|-------------------|-------------------|---------|
+| Constructor Style | Needs hydrate? | Example |
+|-------------------|----------------|---------|
 | All params have defaults | ❌ No | `constructor(name = '', score = 0)` |
 | No parameters | ❌ No | `constructor()` |
 | Required parameters | ✅ Yes | `constructor(name, score)` |
@@ -347,7 +579,6 @@ class Player {
 | Destructuring params | ✅ Yes | `constructor({ name, score })` |
 
 ### Examples
-
 ```javascript
 // ✅ NO hydrate needed - has defaults
 class Counter {
@@ -355,40 +586,165 @@ class Counter {
         this.value = value;
     }
 }
+superLs.register(Counter);
 
-// ❌ NEEDS hydrate - required params
+// ✅ NEEDS hydrate - required params
 class Email {
     constructor(value) {
         if (!value.includes('@')) throw new Error('Invalid');
         this.value = value;
     }
-    static hydrate(data) {
-        return new Email(data.value);
-    }
 }
+superLs.register(Email, (data) => new Email(data.value));
 
-// ❌ NEEDS hydrate - Object.freeze()
+// ✅ NEEDS hydrate - Object.freeze()
 class ImmutableConfig {
     constructor(settings) {
         this.settings = settings;
         Object.freeze(this);
     }
-    static hydrate(data) {
-        return new ImmutableConfig(data.settings);
-    }
 }
+superLs.register(ImmutableConfig, (data) => new ImmutableConfig(data.settings));
 
-// ❌ NEEDS hydrate - destructuring
+// ✅ NEEDS hydrate - destructuring
 class Player {
     constructor({ name, score }) {
         this.name = name;
         this.score = score;
     }
-    static hydrate(data) {
-        return new Player({ name: data.name, score: data.score });
+}
+superLs.register(Player, (data) => new Player({ name: data.name, score: data.score }));
+```
+
+---
+
+## 🔷 TypeScript Usage
+
+### Type Definitions
+
+`super-ls` includes full TypeScript support with generic types:
+
+```typescript
+import superLs from "@t8n/super-ls";
+
+// Generic get() for type inference
+const player = superLs.get<Player>("player_1");
+player?.greet(); // TypeScript knows this method exists
+
+// Register with full type safety
+superLs.register<Player>(Player, (data) => new Player(data.name, data.score));
+```
+
+### HydrateFunction Type
+
+The `HydrateFunction<T, H>` type is defined as:
+
+```typescript
+type PropertiesOnly<T> = {
+    [K in keyof T as T[K] extends (...args: any[]) => any ? never : K]: T[K]
+};
+
+type HydrateFunction<T, H = PropertiesOnly<T>> = (data: H) => T;
+```
+
+By default, it automatically extracts only the non-function properties from your class:
+
+```typescript
+class Player {
+    name: string;
+    score: number;
+    
+    constructor(name: string, score: number) {
+        this.name = name;
+        this.score = score;
+    }
+    
+    greet(): string {
+        return `Hello, I am ${this.name}!`;
     }
 }
+
+// TypeScript infers: data is { name: string; score: number }
+// Methods like greet() are automatically excluded
+superLs.register(Player, (data) => new Player(data.name, data.score));
 ```
+
+### Custom Data Type
+
+The second generic parameter `H` allows you to specify a custom data type:
+
+```typescript
+// Define exactly what properties exist in serialized data
+interface PlayerData {
+    name: string;
+    score: number;
+}
+
+// Use explicit type for the hydrate data
+superLs.register<Player, PlayerData>(Player, (data) => new Player(data.name, data.score));
+```
+
+### ⚠️ Getter Limitation
+
+**Important**: TypeScript cannot distinguish between getters and regular `readonly` properties at the type level. Both appear identical to the type system:
+
+```typescript
+class Player {
+    name: string;
+    score: number;
+    readonly id: string = crypto.randomUUID();  // Regular readonly property (IS serialized)
+    
+    get fullName(): string {              // Getter (NOT serialized)
+        return `Player: ${this.name}`;
+    }
+    
+    get displayScore(): string {          // Getter (NOT serialized)
+        return `Score: ${this.score}`;
+    }
+}
+
+// TypeScript sees data as:
+// { name: string; score: number; id: string; fullName: string; displayScore: string }
+//                                            ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+//                                            These appear in the type but WON'T exist at runtime!
+
+superLs.register(Player, (data) => {
+    // data.fullName is typed as string, but is actually undefined at runtime
+    // data.displayScore is typed as string, but is actually undefined at runtime
+    return new Player(data.name, data.score);
+});
+```
+
+**Why this happens**: TypeScript's type system treats `get fullName(): string` and `readonly fullName: string` identically. There's no type-level metadata to differentiate them.
+
+**Workarounds**:
+
+1. **Simply ignore getter properties** in your hydrate function (recommended):
+   ```typescript
+   superLs.register(Player, (data) => {
+       // Just don't use data.fullName - it won't exist anyway
+       return new Player(data.name, data.score);
+   });
+   ```
+
+2. **Define an explicit data type** using the second generic parameter:
+   ```typescript
+   interface PlayerData {
+       name: string;
+       score: number;
+   }
+   
+   superLs.register<Player, PlayerData>(Player, (data) => new Player(data.name, data.score));
+   ```
+
+3. **Use `Omit` to exclude getters** manually:
+   ```typescript
+   type PlayerSerializable = Omit<PropertiesOnly<Player>, 'fullName' | 'displayScore'>;
+   
+   superLs.register<Player, PlayerSerializable>(Player, (data) => new Player(data.name, data.score));
+   ```
+
+> **Note**: This is a TypeScript limitation, not a `super-ls` limitation. At runtime, `super-ls` correctly serializes only actual properties and ignores getters.
 
 ---
 
@@ -401,29 +757,43 @@ class Player {
 | **Symbol properties** | Not serialized | Use string keys |
 | **Sparse arrays** | Holes become `undefined` | Use dense arrays or objects |
 | **Unregistered classes** | Become plain objects (methods lost) | Register all classes |
-| **Getters/Setters** | Not serialized as values | Work via prototype after restoration |
+| **Getters/Setters** | Not serialized (computed at runtime) | Use hydrate function to recompute |
+| **TypeScript getters** | Appear in `HydrateFunction<T>` data type but are `undefined` at runtime | Ignore them in hydrate or use explicit data type with second generic `H` (see [TypeScript Usage](#-typescript-usage)) |
+| **Temp storage** | Only persists in current V8 thread | Use `set()`/`get()` for persistent storage |
 
 ---
 
 ## 🔧 Under the Hood
 
-`super-ls` uses a two-phase transformation:
+`super-ls` uses native V8 serialization via `@titanpl/core` for maximum performance.
 
 ### Serialization (`set`)
 1. Recursively traverse the value
 2. Wrap registered class instances with type metadata (`__super_type__`, `__data__`)
 3. Track circular references via `WeakMap`
-4. Serialize using `devalue` (handles `Map`, `Set`, `Date`, etc.)
-5. Store string in `t.ls`
+4. Serialize using native `t.ls.serialize()` (V8 ValueSerializer)
+5. Encode bytes to Base64 via `t.core.buffer.toBase64()`
+6. Store string in `t.ls`
 
 ### Deserialization (`get`)
-1. Parse string using `devalue`
-2. Recursively traverse parsed data
-3. Detect type metadata and restore class instances
-4. Create instance using:
-   - `hydrate()` if available
+1. Retrieve Base64 string from `t.ls`
+2. Decode bytes via `t.core.buffer.fromBase64()`
+3. Deserialize using native `t.ls.deserialize()` (V8 ValueDeserializer)
+4. Recursively traverse parsed data
+5. Detect type metadata and restore class instances via `t.ls.hydrate()`
+6. Create instance using (in priority order):
+   - Native `t.ls.hydrate()` if available
+   - Hydrate function passed to `register()`
+   - Static `hydrate()` method on the class
    - Otherwise: `new Constructor()` + `Object.assign()`
-5. Preserve circular references via placeholder morphing
+7. Preserve circular references via placeholder morphing
+
+### Native V8 Types
+V8 serialization natively handles these types without transformation:
+- `Map`, `Set`, `Date`, `RegExp`
+- `TypedArray` (`Uint8Array`, `Float32Array`, etc.)
+- `BigInt`, `undefined`, `NaN`, `Infinity`
+- Circular references
 
 For detailed technical documentation, see [EXPLAIN.md](./EXPLAIN.md).
 
@@ -432,7 +802,6 @@ For detailed technical documentation, see [EXPLAIN.md](./EXPLAIN.md).
 ## 🧪 Testing
 
 The library includes comprehensive test suites:
-
 ```bash
 # Install dependencies
 npm install
@@ -453,7 +822,6 @@ See [TEST_DOCUMENTATION.md](./TEST_DOCUMENTATION.md) for detailed test descripti
 ---
 
 ## 📁 Project Structure
-
 ```
 super-ls/
 ├── index.js              # Main implementation
