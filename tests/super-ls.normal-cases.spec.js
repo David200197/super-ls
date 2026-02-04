@@ -1,28 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SuperLocalStorage } from "../index.js"
-import { parse } from 'devalue';
-
-// ============================================
-// MOCK for Titan Planet's t.ls API
-// ============================================
-const mockStorage = new Map();
-
-globalThis.t = {
-    ls: {
-        set(key, value) {
-            mockStorage.set(key, value);
-        },
-        get(key) {
-            return mockStorage.get(key) || null;
-        },
-        remove(key) {
-            mockStorage.delete(key);
-        },
-        clear() {
-            mockStorage.clear();
-        }
-    }
-};
+import { clearAllMocks, mockStorage } from './_mocks_.js';
 
 // ============================================
 // Test Classes
@@ -256,7 +234,7 @@ describe('SuperLocalStorage', () => {
     let superLs = new SuperLocalStorage();
 
     beforeEach(() => {
-        mockStorage.clear();
+        clearAllMocks();
         superLs = new SuperLocalStorage();
     });
 
@@ -761,14 +739,21 @@ describe('SuperLocalStorage', () => {
         });
     });
 
-    describe('Internals (Under the Hood)', () => {
-        it('should use devalue for serialization', () => {
+    describe('Internals (Under the Hood - V8 Native Serialization)', () => {
+        it('should use V8 native serialization with Base64 encoding', () => {
             superLs.set('internal', { a: 1 });
 
             const raw = mockStorage.get('__sls__internal');
 
+            // Should be a Base64-encoded string
             expect(typeof raw).toBe('string');
-            expect(() => parse(raw)).not.toThrow();
+            
+            // Should be valid Base64 (decodable)
+            expect(() => t.core.buffer.fromBase64(raw)).not.toThrow();
+            
+            // Decoded should be Uint8Array
+            const bytes = t.core.buffer.fromBase64(raw);
+            expect(bytes).toBeInstanceOf(Uint8Array);
         });
 
         it('should add __super_type__ metadata for registered classes', () => {
@@ -776,11 +761,125 @@ describe('SuperLocalStorage', () => {
             superLs.set('meta', new Player('Test', 50));
 
             const raw = mockStorage.get('__sls__meta');
-            const parsed = parse(raw);
+            
+            // Decode and deserialize
+            const bytes = t.core.buffer.fromBase64(raw);
+            const parsed = t.ls.deserialize(bytes);
 
             expect(parsed.__super_type__).toBe('Player');
             expect(parsed.__data__).toBeDefined();
             expect(parsed.__data__.name).toBe('Test');
+        });
+
+        it('should use t.ls.serialize for serialization', () => {
+            const data = { test: 'value', num: 42 };
+            superLs.set('serializeTest', data);
+
+            const raw = mockStorage.get('__sls__serializeTest');
+            const bytes = t.core.buffer.fromBase64(raw);
+            const deserialized = t.ls.deserialize(bytes);
+
+            expect(deserialized.test).toBe('value');
+            expect(deserialized.num).toBe(42);
+        });
+
+        it('should handle native V8 types (Map, Set, Date) directly', () => {
+            const data = {
+                map: new Map([['key', 'value']]),
+                set: new Set([1, 2, 3]),
+                date: new Date('2024-06-15')
+            };
+            superLs.set('nativeTypes', data);
+
+            const raw = mockStorage.get('__sls__nativeTypes');
+            const bytes = t.core.buffer.fromBase64(raw);
+            const deserialized = t.ls.deserialize(bytes);
+
+            // V8 handles these natively
+            expect(deserialized.map).toBeInstanceOf(Map);
+            expect(deserialized.set).toBeInstanceOf(Set);
+            expect(deserialized.date).toBeInstanceOf(Date);
+        });
+    });
+
+    describe('Direct Serialization API', () => {
+        it('should expose serialize() method', () => {
+            const data = { name: 'test', values: [1, 2, 3] };
+            const bytes = superLs.serialize(data);
+
+            expect(bytes).toBeInstanceOf(Uint8Array);
+            expect(bytes.length).toBeGreaterThan(0);
+        });
+
+        it('should expose deserialize() method', () => {
+            const original = { 
+                name: 'test', 
+                map: new Map([['a', 1]]),
+                date: new Date()
+            };
+            const bytes = superLs.serialize(original);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored.name).toBe('test');
+            expect(restored.map).toBeInstanceOf(Map);
+            expect(restored.map.get('a')).toBe(1);
+            expect(restored.date).toBeInstanceOf(Date);
+        });
+
+        it('should serialize and deserialize class instances', () => {
+            superLs.register(Player);
+
+            const player = new Player('SerializeTest', 999);
+            const bytes = superLs.serialize(player);
+            const restored = superLs.deserialize(bytes);
+
+            expect(restored).toBeInstanceOf(Player);
+            expect(restored.name).toBe('SerializeTest');
+            expect(restored.greet()).toBe('Hello, I am SerializeTest!');
+        });
+    });
+
+    describe('Temporary Storage (In-Memory)', () => {
+        it('should store and retrieve with setTemp/getTemp', () => {
+            const obj = { cached: true, timestamp: Date.now() };
+            superLs.setTemp('cache', obj);
+
+            const retrieved = superLs.getTemp('cache');
+            expect(retrieved).toEqual(obj);
+        });
+
+        it('should not serialize temp storage (preserves functions)', () => {
+            const withFn = {
+                value: 42,
+                compute: (x) => x * 2
+            };
+            superLs.setTemp('withFn', withFn);
+
+            const retrieved = superLs.getTemp('withFn');
+            expect(typeof retrieved.compute).toBe('function');
+            expect(retrieved.compute(5)).toBe(10);
+        });
+
+        it('should be independent from persistent storage', () => {
+            superLs.set('key', 'persistent');
+            superLs.setTemp('key', 'temporary');
+
+            expect(superLs.get('key')).toBe('persistent');
+            expect(superLs.getTemp('key')).toBe('temporary');
+        });
+
+        it('should support resolveTemp for memoization', () => {
+            let computeCount = 0;
+            const expensive = () => {
+                computeCount++;
+                return { result: Math.random() };
+            };
+
+            const r1 = superLs.resolveTemp('memoized', expensive);
+            const r2 = superLs.resolveTemp('memoized', expensive);
+
+            expect(computeCount).toBe(1);
+            expect(r1).toBe(r2);
         });
     });
 
@@ -789,6 +888,14 @@ describe('SuperLocalStorage', () => {
             expect(() => superLs.register('not a class')).toThrow();
             expect(() => superLs.register(123)).toThrow();
             expect(() => superLs.register(null)).toThrow();
+        });
+
+        it('should throw for functions (non-serializable by V8)', () => {
+            const data = {
+                name: 'test',
+                fn: () => 'hello'
+            };
+            expect(() => superLs.set('withFn', data)).toThrow();
         });
     });
 });

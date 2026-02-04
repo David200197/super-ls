@@ -145,16 +145,6 @@ export const test = (req) => {
         return results;
     }
 
-    if (!t.ls) {
-        const mockStore = new Map();
-        t.ls = {
-            set: (k, v) => mockStore.set(k, v),
-            get: (k) => mockStore.get(k),
-            remove: (k) => mockStore.delete(k),
-            clean: () => mockStore.clear()
-        };
-    }
-
     const superLs = ext.default || ext;
 
     try {
