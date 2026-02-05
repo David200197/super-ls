@@ -8,7 +8,7 @@ export default defineConfig({
     test: {
         globals: true,
         environment: 'node',
-        setupFiles: ['./vitest.setup.js', '@tgrv/microgravity/setup'],
+        setupFiles: ['@tgrv/microgravity/setup'],
         deps: {
             inline: [/@titanpl\/core/]
         }
