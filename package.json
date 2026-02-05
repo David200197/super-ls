@@ -6,9 +6,11 @@
     "types": "index.d.ts",
     "type": "module",
     "scripts": {
+        "configure": "node configure.js",
         "build": "esbuild index.js --bundle --platform=neutral --format=iife --outfile=dist/index.js --global-name=TitanPlSuperLs",
         "test:ext": "titan run ext",
         "test": "vitest run",
+        "test:debug": "TITAN_DEBUG=true npm test",
         "test:watch": "vitest",
         "test:cov": "vitest --coverage",
         "ext": "titan run ext"
@@ -19,14 +21,14 @@
     ],
     "author": "",
     "license": "ISC",
-    "peerDependencies": {
-        "@titanpl/core": "latest"
-    },
     "devDependencies": {
-        "@titanpl/core": "latest",
+        "@tgrv/microgravity": "^1.0.0",
         "@vitest/coverage-v8": "^4.0.17",
         "esbuild": "^0.27.2",
         "titanpl-sdk": "latest",
         "vitest": "^4.0.17"
+    },
+    "dependencies": {
+        "@titanpl/core": "^2.3.0"
     }
 }

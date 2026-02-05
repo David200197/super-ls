@@ -155,10 +155,10 @@ export async function bundleFile(options) {
  * RULE: After printing error box, throws Error("__TITAN_BUNDLE_FAILED__")
  * @returns {Promise<void>}
  */
-export default async function bundle() {
+export async function bundle() {
     const root = process.cwd();
     const actionsDir = path.join(root, 'app', 'actions');
-    const bundleDir = path.join(root, 'server', 'actions');
+    const bundleDir = path.join(root, 'server', 'src', 'actions');
 
     // Ensure bundle directory exists and is clean
     if (fs.existsSync(bundleDir)) {
@@ -197,7 +197,7 @@ export default async function bundle() {
                 minify: false,
                 sourcemap: false,
                 banner: {
-                    js: "const defineAction = (fn) => fn; const Titan = t;"
+                    js: "var Titan = t;"
                 },
                 footer: {
                     js: `
@@ -210,10 +210,7 @@ export default async function bundle() {
     throw new Error("[Titan] Action '${actionName}' not found or not a function");
   }
 
-  globalThis["${actionName}"] = function(request_arg) {
-     globalThis.req = request_arg;
-     return fn(request_arg);
-  };
+  globalThis["${actionName}"] = globalThis.defineAction(fn);
 })();
 `
                 }

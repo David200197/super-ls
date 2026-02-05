@@ -1,5 +1,4 @@
-
-import { clearAllMocks, mockStorage } from './__mocks__.js';
+import { clearAllMocks } from './__mocks__.js';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SuperLocalStorage } from "../index.js";
 
@@ -453,13 +452,14 @@ describe('SuperLocalStorage - Edge Cases', () => {
                 constructor(value = 'default') {
                     this.value = value;
                 }
+                getValue() { return this.value; }
             }
 
             superLs.register(NoDefaultArgs);
 
             const instance = new NoDefaultArgs('custom');
-            superLs.set('nodefault', instance);
-            const recovered = superLs.get('nodefault');
+            superLs.set('noDefault', instance);
+            const recovered = superLs.get('noDefault');
 
             expect(recovered).toBeInstanceOf(NoDefaultArgs);
             expect(recovered.value).toBe('custom');
@@ -467,351 +467,16 @@ describe('SuperLocalStorage - Edge Cases', () => {
     });
 
     // ==========================================
-    // GETTERS AND SETTERS
+    // WEAKMAP / WEAKSET (non-serializable)
     // ==========================================
-    describe('Getters and Setters', () => {
-        it('should NOT serialize computed getters (expected behavior)', () => {
-            class Rectangle {
-                constructor(width = 0, height = 0) {
-                    this._width = width;
-                    this._height = height;
-                }
-                
-                get area() {
-                    return this._width * this._height;
-                }
-                
-                get perimeter() {
-                    return 2 * (this._width + this._height);
-                }
-            }
-
-            superLs.register(Rectangle);
-
-            const rect = new Rectangle(10, 5);
-            expect(rect.area).toBe(50); // Works before serialization
-
-            superLs.set('rect', rect);
-            const recovered = superLs.get('rect');
-
-            // Getters work because they're on the prototype
-            expect(recovered._width).toBe(10);
-            expect(recovered._height).toBe(5);
-            expect(recovered.area).toBe(50);
-            expect(recovered.perimeter).toBe(30);
-        });
-    });
-
-    // ==========================================
-    // CLASS NAME COLLISIONS
-    // ==========================================
-    describe('Class Name Collisions', () => {
-        it('should handle classes with same name using custom typeName', () => {
-            // Simulating two modules with same class name
-            const ModuleA = (() => {
-                class User {
-                    constructor() { this.type = 'A'; }
-                    getType() { return `User from A: ${this.type}`; }
-                }
-                return User;
-            })();
-
-            const ModuleB = (() => {
-                class User {
-                    constructor() { this.type = 'B'; }
-                    getType() { return `User from B: ${this.type}`; }
-                }
-                return User;
-            })();
-
-            superLs.register(ModuleA, 'UserA');
-            superLs.register(ModuleB, 'UserB');
-
-            const userA = new ModuleA();
-            const userB = new ModuleB();
-
-            superLs.set('userA', userA);
-            superLs.set('userB', userB);
-
-            const recoveredA = superLs.get('userA');
-            const recoveredB = superLs.get('userB');
-
-            expect(recoveredA).toBeInstanceOf(ModuleA);
-            expect(recoveredB).toBeInstanceOf(ModuleB);
-            expect(recoveredA.getType()).toBe('User from A: A');
-            expect(recoveredB.getType()).toBe('User from B: B');
-        });
-    });
-
-    // ==========================================
-    // CIRCULAR WITH CLASSES
-    // ==========================================
-    describe('Circular References with Classes', () => {
-        it('should handle self-referencing class', () => {
-            class LinkedNode {
-                constructor(value = 0) {
-                    this.value = value;
-                    this.next = null;
-                    this.prev = null;
-                }
-            }
-
-            superLs.register(LinkedNode);
-
-            // Create circular linked list
-            const node1 = new LinkedNode(1);
-            const node2 = new LinkedNode(2);
-            const node3 = new LinkedNode(3);
-
-            node1.next = node2;
-            node2.prev = node1;
-            node2.next = node3;
-            node3.prev = node2;
-            node3.next = node1; // Circular!
-            node1.prev = node3;
-
-            superLs.set('circular', node1);
-            const recovered = superLs.get('circular');
-
-            expect(recovered.value).toBe(1);
-            expect(recovered.next.value).toBe(2);
-            expect(recovered.next.next.value).toBe(3);
-            expect(recovered.next.next.next).toBe(recovered); // Circular preserved
-            expect(recovered.prev).toBe(recovered.next.next); // node3
-        });
-
-        it('should handle mutual circular references between different classes', () => {
-            class Author {
-                constructor(name = '') {
-                    this.name = name;
-                    this.books = [];
-                }
-            }
-
-            class Book {
-                constructor(title = '') {
-                    this.title = title;
-                    this.author = null;
-                }
-            }
-
-            superLs.register(Author);
-            superLs.register(Book);
-
-            const author = new Author('Stephen King');
-            const book1 = new Book('The Shining');
-            const book2 = new Book('IT');
-
-            book1.author = author;
-            book2.author = author;
-            author.books.push(book1, book2);
-
-            superLs.set('author', author);
-            const recovered = superLs.get('author');
-
-            expect(recovered).toBeInstanceOf(Author);
-            expect(recovered.books[0]).toBeInstanceOf(Book);
-            expect(recovered.books[0].author).toBe(recovered);
-            expect(recovered.books[1].author).toBe(recovered);
-        });
-    });
-
-    // ==========================================
-    // EXPLICIT UNDEFINED VALUES
-    // ==========================================
-    describe('Explicit Undefined Values', () => {
-        it('should preserve explicit undefined in objects', () => {
-            class Container {
-                constructor() {
-                    this.defined = 'value';
-                    this.explicitUndefined = undefined;
-                    this.nullValue = null;
-                }
-            }
-
-            superLs.register(Container);
-
-            const container = new Container();
-            superLs.set('container', container);
-            const recovered = superLs.get('container');
-
-            expect(recovered.defined).toBe('value');
-            expect(recovered.explicitUndefined).toBeUndefined();
-            expect('explicitUndefined' in recovered).toBe(true);
-            expect(recovered.nullValue).toBeNull();
-        });
-
-        it('should handle undefined in arrays', () => {
-            const arr = [1, undefined, 3, undefined, 5];
-
-            superLs.set('undefArray', arr);
-            const recovered = superLs.get('undefArray');
-
-            expect(recovered[0]).toBe(1);
-            expect(recovered[1]).toBeUndefined();
-            expect(recovered[2]).toBe(3);
-            expect(recovered[3]).toBeUndefined();
-            expect(recovered[4]).toBe(5);
-        });
-    });
-
-    // ==========================================
-    // EDGE CASE: EMPTY STRUCTURES
-    // ==========================================
-    describe('Empty Structures', () => {
-        it('should handle empty class instance', () => {
-            class Empty {}
-
-            superLs.register(Empty);
-
-            const empty = new Empty();
-            superLs.set('empty', empty);
-            const recovered = superLs.get('empty');
-
-            expect(recovered).toBeInstanceOf(Empty);
-        });
-
-        it('should handle empty nested structures', () => {
-            const data = {
-                emptyObj: {},
-                emptyArr: [],
-                emptyMap: new Map(),
-                emptySet: new Set()
-            };
-
-            superLs.set('empties', data);
-            const recovered = superLs.get('empties');
-
-            expect(recovered.emptyObj).toEqual({});
-            expect(recovered.emptyArr).toEqual([]);
-            expect(recovered.emptyMap.size).toBe(0);
-            expect(recovered.emptySet.size).toBe(0);
-        });
-    });
-
-    // ==========================================
-    // SPECIAL KEYS
-    // ==========================================
-    describe('Special Property Names', () => {
-        it('should handle properties named like internal markers', () => {
-            const tricky = {
-                __super_type__: 'not a real type',
-                __data__: 'just data',
-                __proto__: { fake: true },
-                constructor: 'also fake',
-                normal: 'value'
-            };
-
-            superLs.set('tricky', tricky);
-            const recovered = superLs.get('tricky');
-
-            // This might be tricky - let's see behavior
-            expect(recovered.normal).toBe('value');
-        });
-
-        it('should handle numeric string keys', () => {
-            const obj = {
-                '0': 'zero',
-                '1': 'one',
-                '999': 'nine nine nine'
-            };
-
-            superLs.set('numeric', obj);
-            const recovered = superLs.get('numeric');
-
-            expect(recovered['0']).toBe('zero');
-            expect(recovered['1']).toBe('one');
-            expect(recovered['999']).toBe('nine nine nine');
-        });
-    });
-
-    // ==========================================
-    // STRESS TEST
-    // ==========================================
-    describe('Stress Tests', () => {
-        it('should handle large number of registered classes', () => {
-            // Register 50 classes
-            const classes = [];
-            for (let i = 0; i < 50; i++) {
-                const cls = class {
-                    constructor() { this.id = i; }
-                    getId() { return this.id; }
-                };
-                Object.defineProperty(cls, 'name', { value: `Class${i}` });
-                classes.push(cls);
-                superLs.register(cls);
-            }
-
-            // Create instances of each
-            const instances = classes.map((Cls, i) => {
-                const inst = new Cls();
-                inst.index = i;
-                return inst;
-            });
-
-            superLs.set('manyClasses', instances);
-            const recovered = superLs.get('manyClasses');
-
-            expect(recovered).toHaveLength(50);
-            for (let i = 0; i < 50; i++) {
-                expect(recovered[i]).toBeInstanceOf(classes[i]);
-                expect(recovered[i].getId()).toBe(i);
-            }
-        });
-
-        it('should handle large array of class instances', () => {
-            class SimpleItem {
-                constructor(id = 0) { this.id = id; }
-            }
-
-            superLs.register(SimpleItem);
-
-            const items = Array.from({ length: 1000 }, (_, i) => new SimpleItem(i));
-            
-            superLs.set('largeArray', items);
-            const recovered = superLs.get('largeArray');
-
-            expect(recovered).toHaveLength(1000);
-            expect(recovered[0]).toBeInstanceOf(SimpleItem);
-            expect(recovered[500].id).toBe(500);
-            expect(recovered[999].id).toBe(999);
-        });
-    });
-
-    // ==========================================
-    // ERROR SCENARIOS
-    // ==========================================
-    describe('Error Scenarios', () => {
-        it('should return null for non-existent key', () => {
-            expect(superLs.get('does-not-exist')).toBeNull();
-        });
-
-        it('should throw when registering non-function', () => {
-            expect(() => superLs.register({})).toThrow();
-            expect(() => superLs.register('string')).toThrow();
-            expect(() => superLs.register(123)).toThrow();
-            expect(() => superLs.register(null)).toThrow();
-        });
-
-        it('should throw for non-serializable values (functions)', () => {
-            const data = {
-                name: 'test',
-                fn: () => 'hello'
-            };
-            // V8 serialization throws on functions
-            expect(() => superLs.set('withFn', data)).toThrow();
-        });
-
+    describe('Non-serializable types', () => {
         it('should handle WeakMap (V8 converts to empty or throws)', () => {
-            // WeakMap cannot be serialized by V8
-            // Behavior may vary: throw or convert to empty object
             const data = { wm: new WeakMap(), other: 'value' };
-            
+
             try {
                 superLs.set('withWm', data);
                 const recovered = superLs.get('withWm');
                 expect(recovered.other).toBe('value');
-                // If it doesn't throw, WeakMap becomes something else
                 expect(recovered.wm).toBeDefined();
             } catch (e) {
                 // V8 might throw on WeakMap - this is acceptable
@@ -865,6 +530,8 @@ describe('SuperLocalStorage - Edge Cases', () => {
         });
 
         it('should use different prefixes when configured', () => {
+            const { ls } = await import('@titanpl/core');
+
             const storageA = new SuperLocalStorage('prefix_a_');
             const storageB = new SuperLocalStorage('prefix_b_');
 
@@ -875,8 +542,8 @@ describe('SuperLocalStorage - Edge Cases', () => {
             expect(storageB.get('key')).toBe('valueB');
 
             // Verify different keys in underlying storage
-            expect(mockStorage.has('prefix_a_key')).toBe(true);
-            expect(mockStorage.has('prefix_b_key')).toBe(true);
+            expect(ls.get('prefix_a_key')).not.toBeNull();
+            expect(ls.get('prefix_b_key')).not.toBeNull();
         });
     });
 

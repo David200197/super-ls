@@ -1,5 +1,8 @@
 {
-    "name": "titanpl-superls",
-    "main": "dist/index.js",
-    "description": "A supercharged storage adapter for Titan Planet that enables storing complex objects, circular references, and Class instances with automatic rehydration."
+  "name": "titanpl-superls",
+  "main": "dist/index.js",
+  "description": "A supercharged storage adapter for Titan Planet that enables storing complex objects, circular references, and Class instances with automatic rehydration.",
+  "native": {
+    "path": "/home/david/jobs/titanpl/code/super-ls/native/target/release/libtitan_core.so"
+  }
 }

@@ -1,0 +1,64 @@
+var Titan = t;
+var __titan_exports = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // app/actions/test.js
+  var test_exports = {};
+  __export(test_exports, {
+    test: () => test
+  });
+  var test = (req) => {
+    const ext = t["titanpl-superls"];
+    const results = {
+      extension: "titanpl-superls",
+      loaded: !!ext,
+      methods: ext ? Object.keys(ext) : [],
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    if (ext && ext.hello) {
+      try {
+        results.hello_test = ext.hello("World");
+      } catch (e) {
+        results.hello_error = String(e);
+      }
+    }
+    if (ext && ext.calc) {
+      try {
+        results.calc_test = ext.calc(15, 25);
+      } catch (e) {
+        results.calc_error = String(e);
+      }
+    }
+    return results;
+  };
+  return __toCommonJS(test_exports);
+})();
+
+(function () {
+  const fn =
+    __titan_exports["test"] ||
+    __titan_exports.default;
+
+  if (typeof fn !== "function") {
+    throw new Error("[Titan] Action 'test' not found or not a function");
+  }
+
+  globalThis["test"] = globalThis.defineAction(fn);
+})();
+
