@@ -29,6 +29,6 @@
         "vitest": "^4.0.17"
     },
     "dependencies": {
-        "@titanpl/core": "^2.3.0"
+        "@titanpl/core": "^2.4.1"
     }
 }

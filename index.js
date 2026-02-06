@@ -1,5 +1,4 @@
 import { registerExtension } from "./utils/registerExtension.js";
-import { ls, core } from "@titanpl/core"
 
 /**
  * @fileoverview SuperLocalStorage - Enhanced localStorage wrapper for Titan Planet
@@ -67,7 +66,7 @@ const isPrimitive = (value) => value === null || typeof value !== 'object';
  * @param {any} value - Value to check
  * @returns {boolean} True if value has type wrapper markers
  */
-const hasTypeWrapper = (value) => 
+const hasTypeWrapper = (value) =>
     value && typeof value === 'object' && value[TYPE_MARKER] && value[DATA_MARKER] !== undefined;
 
 // ============================================================================
@@ -144,7 +143,7 @@ export class SuperLocalStorage {
      * Registers a class for serialization/deserialization support.
      * 
      * Once registered, instances of this class can be stored and retrieved
-     * with their methods intact. Uses native ls.register() for optimal performance.
+     * with their methods intact. Uses nativet.ls.register() for optimal performance.
      * 
      * @param {ClassConstructor} ClassRef - The class constructor to register
      * @param {HydrateFunction|string} [hydrateOrTypeName=null] - Hydrate function or custom type name
@@ -190,8 +189,8 @@ export class SuperLocalStorage {
             hydrate
         });
 
-        // Delegate to native ls.register() for hydration support
-        ls.register(ClassRef, hydrate, finalTypeName);
+        // Delegate to nativet.ls.register() for hydration support
+        t.ls.register(ClassRef, hydrate, finalTypeName);
     }
 
     /**
@@ -220,9 +219,9 @@ export class SuperLocalStorage {
      */
     set(key, value) {
         const payload = this._toSerializable(value);
-        const bytes = ls.serialize(payload);
-        const base64 = core.buffer.toBase64(bytes);
-        ls.set(this.prefix + key, base64);
+        const bytes = t.ls.serialize(payload);
+        const base64 = t.bugger.toBase64(bytes);
+        t.ls.set(this.prefix + key, base64);
     }
 
     /**
@@ -242,14 +241,14 @@ export class SuperLocalStorage {
      * }
      */
     get(key) {
-        const raw = ls.get(this.prefix + key);
+        const raw = t.ls.get(this.prefix + key);
 
         if (!raw) {
             return null;
         }
 
-        const bytes = core.buffer.fromBase64(raw);
-        const parsed = ls.deserialize(bytes);
+        const bytes = t.bugger.fromBase64(raw);
+        const parsed = t.ls.deserialize(bytes);
         return this._rehydrate(parsed, new WeakMap());
     }
 
@@ -265,7 +264,7 @@ export class SuperLocalStorage {
      * superLs.get('temp_data'); // null
      */
     remove(key) {
-        ls.remove(this.prefix + key);
+        t.ls.remove(this.prefix + key);
     }
 
     /**
@@ -280,7 +279,7 @@ export class SuperLocalStorage {
      * // All keys are now removed
      */
     clean() {
-        ls.clear();
+        t.ls.clear();
     }
 
     /**
@@ -321,11 +320,11 @@ export class SuperLocalStorage {
      */
     resolve(key, resolver) {
         const value = this.get(key);
-        
+
         if (this._checkIfExistValue(value)) {
             return value;
         }
-        
+
         const resolvedValue = resolver();
         this.set(key, resolvedValue);
         return resolvedValue;
@@ -354,7 +353,7 @@ export class SuperLocalStorage {
      * const data = superLs.getTemp('computed_data'); // Fast retrieval
      */
     setTemp(key, value) {
-        ls.setObject(this.prefix + key, value);
+        t.ls.setObject(this.prefix + key, value);
     }
 
     /**
@@ -374,7 +373,7 @@ export class SuperLocalStorage {
      * }
      */
     getTemp(key) {
-        return ls.getObject(this.prefix + key);
+        returnt.ls.getObject(this.prefix + key);
     }
 
     /**
@@ -396,11 +395,11 @@ export class SuperLocalStorage {
      */
     resolveTemp(key, resolver) {
         const value = this.getTemp(key);
-        
+
         if (value !== undefined) {
             return value;
         }
-        
+
         const resolvedValue = resolver();
         this.setTemp(key, resolvedValue);
         return resolvedValue;
@@ -424,7 +423,7 @@ export class SuperLocalStorage {
      */
     serialize(value) {
         const payload = this._toSerializable(value);
-        return ls.serialize(payload);
+        returnt.ls.serialize(payload);
     }
 
     /**
@@ -440,7 +439,7 @@ export class SuperLocalStorage {
      * const value = superLs.deserialize(bytes);
      */
     deserialize(bytes) {
-        const parsed = ls.deserialize(bytes);
+        const parsed = t.ls.deserialize(bytes);
         return this._rehydrate(parsed, new WeakMap());
     }
 
@@ -635,7 +634,7 @@ export class SuperLocalStorage {
     /**
      * Recursively rehydrates serialized data back to original types.
      * 
-     * Uses native ls.hydrate() for registered class instances.
+     * Uses nativet.ls.hydrate() for registered class instances.
      * V8 deserialize already restores Map, Set, Date, etc.
      * 
      * @param {any} value - Value to rehydrate
@@ -667,7 +666,7 @@ export class SuperLocalStorage {
     }
 
     /**
-     * Rehydrates a wrapped class instance using native ls.hydrate()
+     * Rehydrates a wrapped class instance using nativet.ls.hydrate()
      * @param {SerializedClassWrapper} value - Wrapped class data
      * @param {WeakMap} seen - Circular reference tracker
      * @returns {any} Restored class instance
@@ -692,10 +691,10 @@ export class SuperLocalStorage {
             hydratedData[key] = this._rehydrate(value[DATA_MARKER][key], seen);
         }
 
-        // Use native ls.hydrate() if available, otherwise fallback to local logic
+        // Use nativet.ls.hydrate() if available, otherwise fallback to local logic
         let instance;
         try {
-            instance = ls.hydrate(typeName, hydratedData);
+            instance = t.ls.hydrate(typeName, hydratedData);
         } catch {
             // Fallback to local hydration logic
             instance = this._createInstance(entry, hydratedData);
